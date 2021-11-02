@@ -113,6 +113,10 @@ def fps(duration=1):
     return int(duration * FREQ / BUFSIZE)
 
 
+def sps(duration=1):
+    return int(duration * FREQ)
+
+
 @scream
 def play(ctl, gen):
     dsp = ossaudiodev.open('w')
