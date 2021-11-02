@@ -1,4 +1,5 @@
 #padsp python
+# Envelope
 # https://www.youtube.com/watch?v=gqpvIwYko3o&list=PLqJgTfn3kSMW3AAAl2liJRKd-7DhZwLlq&index=2
 import numpy as np
 from random import choice
@@ -19,7 +20,7 @@ def seq(fpq, notes):
         yield choice(notes), fpq
 
 
-def env(attack, hold, release, last):
+def env(attack, hold, release, last=0):
     acnt = sps(attack / 1000)
     hcnt = sps(hold / 1000)
     rcnt = sps(release / 1000)

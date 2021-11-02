@@ -1,4 +1,5 @@
 #padsp python
+# Basic rich oscilator
 # https://www.youtube.com/watch?v=I88Cxi86Zu8&list=PLqJgTfn3kSMW3AAAl2liJRKd-7DhZwLlq&index=1
 from random import choice
 from pysound import osc, sin_t, Var, gui_play, fps, mtof
