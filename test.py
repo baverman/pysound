@@ -1,7 +1,6 @@
 #padsp python
 import math
 import wave
-import numpy as np
 import matplotlib.pyplot as plt
 from itertools import islice
 import time
@@ -10,10 +9,6 @@ import threading
 
 import keys
 
-FREQ = 44100
-ROOT = 60
-
-tau = np.pi * 2
 
 _KEYNOTES1 = ['z', 's', 'x', 'd', 'c', 'v', 'g', 'b', 'h', 'n', 'j', 'm',
              'comma', 'l', 'period', 'semicolon', 'slash', 'Shift_R', 'Return']
@@ -21,67 +16,6 @@ _KEYNOTES2 = ['q', '2', 'w', '3', 'e', 'r', '5', 't', '6', 'y', '7', 'u',
               'i', '9', 'o', '0', 'p', 'bracketleft', 'equal', 'bracketright', 'BackSpace', 'backslash']
 KEYNOTES = {it: i for i, it in enumerate(_KEYNOTES1)}
 KEYNOTES.update({it: i + 12 for i, it in enumerate(_KEYNOTES2)})
-
-
-def get_note(num):
-    return 440 * 2 ** ((num-69)/12)
-
-
-def sinsum(steps, *partials):
-    x = np.linspace(0, 1, steps, endpoint=False, dtype=np.float32)
-    y = 0
-    for p, v in enumerate(partials, 1):
-        y = y + v * np.sin(x*tau*p)
-    y /= np.max(y)
-    return x, y
-
-
-class phasor:
-    def __init__(self, phase=0, freq=FREQ):
-        self.phase = 0
-        self.freq = freq
-
-    def __call__(self, freqs, bufsize=None):
-        if bufsize is not None:
-            freqs = np.full(bufsize, freqs, dtype=np.float32)
-        result = np.cumsum(freqs / self.freq)
-        if result[-1] != 0:
-            result += self.phase
-        result %= 1
-        self.phase = result[-1]
-        return result
-
-
-class osc:
-    def __init__(self, table, phase=0, freq=FREQ):
-        self.phasor = phasor(phase, freq)
-        self.table = table
-
-    def __call__(self, freqs, bufsize=None):
-        return np.interp(self.phasor(freqs, bufsize), *self.table).astype(np.float32)
-
-
-def fft_plot(signal, n=2048):
-    return np.fft.rfftfreq(n, 1/FREQ), 2/n*np.abs(np.fft.rfft(signal, n))
-
-
-def open_wav_f32(fname):
-    wave.WAVE_FORMAT_PCM = 3  # float
-    f = wave.open(fname, 'wb')
-    f.setnchannels(1)
-    f.setsampwidth(4)
-    f.setframerate(FREQ)
-    return f
-
-
-def scream(fn):
-    def inner(*args, **kwargs):
-        try:
-            return fn(*args, **kwargs)
-        except:
-            import traceback
-            traceback.print_exc()
-    return inner
 
 
 @scream
@@ -99,23 +33,6 @@ def play(gen, n):
             cnt += len(frame)
         time.sleep(n/FREQ/2)
     dsp.sync()
-
-
-sin_t = sinsum(1024, 1)
-saw_t = sinsum(1024, *[1/i for i in range(1, 20)])
-square_t = sinsum(1024, *[1/i if i%2 else 0 for i in range(1, 20)])
-square_unlim_t = square_t[0], np.sign(square_t[1])
-plt.plot(*square_unlim_t)
-plt.show()
-
-o = osc(square_t)
-n = 512
-frame = np.concatenate([o(200, n), o(400, n), o(500, n), o(600, n)]) * 0.2
-# frame = np.concatenate([o(300, n)])
-# plt.plot(frame)
-# plt.plot(*fft_plot(frame))
-# plt.xscale('log')
-# plt.show()
 
 
 def fm(ctl, base_freq, n):
@@ -198,37 +115,6 @@ def ins(ctl, n):
         scount += n
 
 
-def gui(ctl, width):
-    import tkinter as tk
-
-    def kb(event):
-        ctl['keys'] = keys.keyboard_state()
-
-    master = tk.Tk()
-    master.bind('<KeyPress>', kb)
-    master.bind('<KeyRelease>', kb)
-
-    for _, v in ctl.items():
-        w = tk.Scale(master, label=v.label, from_=v.min, to=v.max, orient=tk.HORIZONTAL,
-                     length=width, command=v, resolution=v.resolution)
-        w.set(v.val)
-        w.pack()
-
-    tk.mainloop()
-
-
-class Var:
-    def __init__(self, label, value, min, max, resolution=1):
-        self.label = label
-        self.val = value
-        self.min = min
-        self.max = max
-        self.resolution = resolution
-
-    def __call__(self, event):
-        self.val = float(event)
-
-
 ctl = {
     # 'base': Var('Base', 330, 50, 600),
     'octave': Var('Octave', 4, 0, 6, resolution=1),
@@ -240,15 +126,6 @@ ctl = {
     'mod-index': Var('Modulation index', 0, 0, 10, resolution=0.1),
     'volume': Var('Volume', 0.2, 0, 1, resolution=0.1),
 }
-
-# with open_wav_f32('/tmp/boo.wav') as f:
-#     ctl['keys'] = ['n']
-#     g = ins(ctl, 512)
-#     f.writeframes(next(g))
-#     ctl['keys'] = []
-#     for _ in range(3*FREQ//512):
-#         f.writeframes(next(g))
-
 
 t = threading.Thread(target=play, args=(ins(ctl, 512), 512), daemon=True)
 t.start()
