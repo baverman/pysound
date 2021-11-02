@@ -18,23 +18,6 @@ KEYNOTES = {it: i for i, it in enumerate(_KEYNOTES1)}
 KEYNOTES.update({it: i + 12 for i, it in enumerate(_KEYNOTES2)})
 
 
-@scream
-def play(gen, n):
-    dsp = ossaudiodev.open('w')
-    dsp.setparameters(ossaudiodev.AFMT_S16_LE, 1, 44100)
-    cnt = 0
-    start = time.time()
-    while True:
-        while cnt < (time.time() - start) * FREQ + n:
-            frame = next(gen)
-            if np.max(np.abs(frame)) >= 1:
-                print('@@@@@@')
-            dsp.write((frame * 32767).astype(np.int16))
-            cnt += len(frame)
-        time.sleep(n/FREQ/2)
-    dsp.sync()
-
-
 def fm(ctl, base_freq, n):
     o = osc([sin_t, saw_t, square_t, square_unlim_t][int(ctl['waveform'].val)-1])
     f = osc(sin_t)
