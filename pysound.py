@@ -4,6 +4,8 @@ import ossaudiodev
 import threading
 import wave
 
+import filters
+
 FREQ = 44100
 BUFSIZE = 512
 
@@ -54,8 +56,8 @@ class osc:
         return np.interp(self.phasor(freq), *self.table).astype(np.float32)
 
 
-def fft_plot(signal, window=2048):
-    return np.fft.rfftfreq(window, 1/FREQ), 2/window*np.abs(np.fft.rfft(signal, window))
+def fft_plot(signal, window=2048, crop=0):
+    return np.fft.rfftfreq(window, 1/FREQ)[crop:], 2/window*np.abs(np.fft.rfft(signal, window))[crop:]
 
 
 def open_wav_f32(fname):
@@ -115,6 +117,22 @@ def fps(duration=1):
 
 def sps(duration=1):
     return int(duration * FREQ)
+
+
+def lowpass():
+    result = np.empty(BUFSIZE, dtype=np.float32)
+    result[-1] = 0
+
+    def gen(data, cutoff):
+        if type(cutoff) in (int, float):
+            alpha = np.full(data.shape[0], cutoff/FREQ, dtype=np.float32)
+        else:
+            alpha = cutoff / FREQ
+
+        filters.lowpass(result, data, alpha, result[-1])
+        return result
+
+    return gen
 
 
 @scream
