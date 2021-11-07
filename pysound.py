@@ -222,7 +222,9 @@ def play(ctl, gen):
     cnt = 0
     start = time.time()
     while True:
-        if cnt < (time.time() - start) * FREQ + BUFSIZE:
+        now = time.time()
+        need_samples = (now - start) * FREQ + BUFSIZE
+        if cnt <= need_samples:
             frame = next(gen, None) * ctl['master-volume']
             if frame is None:
                 break
@@ -231,5 +233,5 @@ def play(ctl, gen):
             dsp.write((frame * 32767).astype(np.int16))
             cnt += len(frame)
         else:
-            time.sleep(BUFSIZE/FREQ/2)
+            time.sleep((cnt - need_samples)/FREQ)
     dsp.sync()
