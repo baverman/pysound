@@ -27,7 +27,7 @@ def synth(ctl, f):
     while line.running:
         sig = o(f)
         if ctl['filter-on'] > 0:
-            sig = lp(sig, fline()**4*ctl['filter-cutoff'])
+            sig = lp(sig, fline()**2*ctl['filter-cutoff'])
         yield sig * line()**4
 
 
@@ -35,7 +35,7 @@ def gen(ctl):
     notes = choicer(it.value for it in Scales.major.notes)
     p = poly()
     while True:
-        f = mtof(30 + next(notes))
+        f = mtof(36 + next(notes))
         p.add(synth(ctl, f))
         for _ in range(fps(60/ctl['tempo'])):
             yield p()
