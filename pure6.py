@@ -8,7 +8,7 @@ gui = GUI(
     Var('tempo', 330, 50, 600),
     Var('harmonicity', 1.5, 0, 4, resolution=0.01),
     Var('modulation-index', 4, 0, 10, resolution=0.1),
-    Var('modulation-release', 200, 1, 1000),
+    Var('modulation-release', 450, 1, 1000),
     Var('attack', 10, 1, 100),
     Var('hold', 50, 1, 1000),
     Var('release', 500, 1, 2000),
@@ -16,23 +16,22 @@ gui = GUI(
 )
 
 
-def fm(ctl):
+def fm():
     o = osc(sin_t)
     m = osc(sin_t)
-    def sig(f, mline):
-        harm = ctl['harmonicity']
-        depth = f * harm * ctl['modulation-index'] * mline
-        mf = m(f * harm)
+    def sig(f, harmonicity, modindex):
+        depth = f * harmonicity * modindex
+        mf = m(f * harmonicity)
         return o(f + mf * depth)
     return sig
 
 
 def synth(ctl, f):
-    o = fm(ctl)
+    o = fm()
     line = env_ahr(ctl['attack'], ctl['hold'], ctl['release'])
     mline = env_ahr(10, 1, ctl['modulation-release'])
     while line.running:
-        yield o(f, mline()) * line()**4
+        yield o(f, ctl['harmonicity'], mline()**4 * ctl['modulation-index']) * line()**4
 
 
 def gen(ctl):
