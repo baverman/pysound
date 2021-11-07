@@ -4,6 +4,7 @@ import ossaudiodev
 import threading
 import wave
 import random
+import pprint
 
 import filters
 
@@ -187,6 +188,7 @@ def show_window(controls, width):
         w.pack()
 
     tk.mainloop()
+    pprint.pprint(controls.ctl)
 
 
 def fps(duration=1):

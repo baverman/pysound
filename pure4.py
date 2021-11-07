@@ -6,16 +6,16 @@ from pysound import GUI, Var, mtof, lowpass, phasor, fps, poly, choicer, env_ahr
 from tonator import Scales
 
 gui = GUI(
-    Var('tempo', 250, 50, 600),
+    Var('tempo', 320, 50, 600),
     Var('attack', 8, 1, 100),
     Var('hold', 100, 1, 1000),
     Var('release', 500, 1, 2000),
     Var('filter-on', 1, 0, 1),
     Var('filter-attack', 5, 1, 100),
     Var('filter-hold', 1, 1, 1000),
-    Var('filter-release', 200, 1, 2000),
+    Var('filter-release', 260, 1, 2000),
     Var('filter-cutoff', 15000, 100, 20000),
-    Var('filter-resonance', 0, 0, 1, resolution=0.01),
+    Var('filter-resonance', 0.7, 0, 1, resolution=0.01),
     Var('master-volume', 0.2, 0, 1, resolution=0.01),
 )
 
