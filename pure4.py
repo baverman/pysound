@@ -2,43 +2,44 @@
 # Acid
 # https://www.youtube.com/watch?v=_qImZOcHz2U&list=PLqJgTfn3kSMW3AAAl2liJRKd-7DhZwLlq&index=4
 from random import choice
-from pysound import Var, gui_play, mtof, lowpass, phasor
+from pysound import GUI, Var, mtof, lowpass, phasor, fps, poly, choicer, env_ahr
 from tonator import Scales
-from pure3 import env, poly
 
-ctl = {
-    'attack': Var('Attack', 8, 1, 100),
-    'hold': Var('Hold', 100, 1, 1000),
-    'release': Var('Release', 500, 1, 2000),
-    'fattack': Var('Filter Attack', 12, 1, 100),
-    'fhold': Var('Filter Hold', 1, 1, 1000),
-    'frelease': Var('Filter Release', 100, 1, 2000),
-    'cutoff': Var('Cutoff', 10000, 100, 20000),
-    'master': Var('Master volume', 0.2, 0, 1, resolution=0.01),
-}
+gui = GUI(
+    Var('tempo', 250, 50, 600),
+    Var('attack', 8, 1, 100),
+    Var('hold', 100, 1, 1000),
+    Var('release', 500, 1, 2000),
+    Var('filter-on', 1, 0, 1),
+    Var('filter-attack', 5, 1, 100),
+    Var('filter-hold', 1, 1, 1000),
+    Var('filter-release', 200, 1, 2000),
+    Var('filter-cutoff', 15000, 100, 20000),
+    Var('master-volume', 0.2, 0, 1, resolution=0.01),
+)
 
 
 def synth(ctl, f):
     o = phasor()
-    line = env(ctl['attack'].val, ctl['hold'].val, ctl['release'].val)
-    fline = env(ctl['fattack'].val, ctl['fhold'].val, ctl['frelease'].val)
+    line = env_ahr(ctl['attack'], ctl['hold'], ctl['release'])
+    fline = env_ahr(ctl['filter-attack'], ctl['filter-hold'], ctl['filter-release'])
     lp = lowpass()
-    while True:
-        yield lp(o(f), fline()*ctl['cutoff'].val) * line()**4
-        if line.last == 0:
-            break
+    while line.running:
+        sig = o(f)
+        if ctl['filter-on'] > 0:
+            sig = lp(sig, fline()**4*ctl['filter-cutoff'])
+        yield sig * line()**4
 
 
 def gen(ctl):
-    notes = [it.value for it in Scales.major.notes]
+    notes = choicer(it.value for it in Scales.major.notes)
     p = poly()
     while True:
-        note = choice(notes)
-        f = mtof(30 + note)
+        f = mtof(30 + next(notes))
         p.add(synth(ctl, f))
-        for _ in range(15):
+        for _ in range(fps(60/ctl['tempo'])):
             yield p()
 
 
 if __name__ == '__main__':
-    gui_play(ctl, gen(ctl))
+    gui.play(gen(gui.ctl))

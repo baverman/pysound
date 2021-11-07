@@ -19,7 +19,7 @@ KEYNOTES.update({it: i + 12 for i, it in enumerate(_KEYNOTES2)})
 
 
 def fm(ctl, base_freq, n):
-    o = osc([sin_t, saw_t, square_t, square_unlim_t][int(ctl['waveform'].val)-1])
+    o = osc([sin_t, saw_t, square_t, square_unlim_t][int(ctl['waveform'])-1])
     f = osc(sin_t)
     while True:
         harm = ctl['harm'].val

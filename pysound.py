@@ -3,6 +3,7 @@ import numpy as np
 import ossaudiodev
 import threading
 import wave
+import random
 
 import filters
 
@@ -10,6 +11,17 @@ FREQ = 44100
 BUFSIZE = 512
 
 tau = np.pi * 2
+
+
+def choicer(values):
+    values = list(values)
+    last = None
+    while True:
+        random.shuffle(values)
+        if values[0] == last:
+            values[0], values[1] = values[1], values[0]
+        yield from values
+        last = values[-1]
 
 
 def mtof(num):
@@ -56,6 +68,54 @@ class osc:
         return np.interp(self.phasor(freq), *self.table).astype(np.float32)
 
 
+def env_ahr(attack, hold, release, last=None):
+    last = last or 0
+    acnt = sps(attack / 1000)
+    hcnt = sps(hold / 1000)
+    rcnt = sps(release / 1000)
+    e = np.concatenate([
+        np.linspace(last, 1, acnt, endpoint=False, dtype=np.float32),
+        np.full(hcnt, 1, dtype=np.float32),
+        np.linspace(1, 0, rcnt, dtype=np.float32),
+        np.full(BUFSIZE, 0, dtype=np.float32),
+    ])
+
+    samples = 0
+    def gen():
+        nonlocal samples
+        if samples < acnt + hcnt + rcnt:
+            result = e[samples:samples+BUFSIZE]
+        else:
+            result = e[-BUFSIZE:]
+            gen.running = False
+        samples += BUFSIZE
+        gen.last = result[-1]
+        return result
+
+    gen.running = True
+    return gen
+
+
+class poly:
+    def __init__(self):
+        self.gens = set()
+
+    def add(self, gen):
+        self.gens.add(gen)
+
+    def __call__(self):
+        toremove = []
+        result = np.full(BUFSIZE, 0, dtype=np.float32)
+        for g in self.gens:
+            data = next(g, None)
+            if data is None:
+                toremove.append(g)
+            else:
+                result += data
+        self.gens.difference_update(toremove)
+        return result
+
+
 def fft_plot(signal, window=2048, crop=0):
     return np.fft.rfftfreq(window, 1/FREQ)[crop:], 2/window*np.abs(np.fft.rfft(signal, window))[crop:]
 
@@ -79,32 +139,50 @@ def scream(fn):
     return inner
 
 
+class GUI:
+    def __init__(self, *controls):
+        self.controls = controls
+        self.ctl = {it.name: it.val for it in controls}
+
+    def __iter__(self):
+        return iter(self.controls)
+
+    def command(self, control):
+        def callback(value):
+            self.ctl[control.name] = float(value)
+        return callback
+
+    def play(self, gen, width=600):
+        t = threading.Thread(target=play, args=(self.ctl, gen), daemon=True)
+        t.start()
+        show_window(self, width)
+
+
 class Var:
-    def __init__(self, label, value, min, max, resolution=1):
-        self.label = label
+    def __init__(self, name, value, min, max, resolution=1, label=None):
+        self.name = name
+        self.label = label or name.replace('-', ' ').title()
         self.val = value
         self.min = min
         self.max = max
         self.resolution = resolution
 
-    def __call__(self, value):
-        self.val = float(value)
 
-
-def gui(ctl, width):
+def show_window(controls, width):
     import tkinter as tk
     import keys
 
+    controls.ctl['keys'] = []
     def kb(_):
-        ctl['keys'] = keys.keyboard_state()
+        controls.ctl['keys'] = keys.keyboard_state()
 
     master = tk.Tk()
     master.bind('<KeyPress>', kb)
     master.bind('<KeyRelease>', kb)
 
-    for _, v in ctl.items():
+    for v in controls:
         w = tk.Scale(master, label=v.label, from_=v.min, to=v.max, orient=tk.HORIZONTAL,
-                     length=width, command=v, resolution=v.resolution)
+                     length=width, command=controls.command(v), resolution=v.resolution)
         w.set(v.val)
         w.pack()
 
@@ -143,7 +221,7 @@ def play(ctl, gen):
     start = time.time()
     while True:
         if cnt < (time.time() - start) * FREQ + BUFSIZE:
-            frame = next(gen, None) * ctl['master'].val
+            frame = next(gen, None) * ctl['master-volume']
             if frame is None:
                 break
             if np.max(np.abs(frame)) >= 1:
@@ -153,9 +231,3 @@ def play(ctl, gen):
         else:
             time.sleep(BUFSIZE/FREQ/2)
     dsp.sync()
-
-
-def gui_play(ctl, gen, width=600):
-    t = threading.Thread(target=play, args=(ctl, gen), daemon=True)
-    t.start()
-    gui(ctl, width)

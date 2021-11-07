@@ -1,20 +1,13 @@
 #padsp python
 # Basic rich oscilator
 # https://www.youtube.com/watch?v=I88Cxi86Zu8&list=PLqJgTfn3kSMW3AAAl2liJRKd-7DhZwLlq&index=1
-from random import choice
-from pysound import osc, sin_t, Var, gui_play, fps, mtof
-from tonator import Scales, Note
+from pysound import osc, sin_t, fps, mtof, choicer, GUI, Var
+from tonator import Scales
 
-ctl = {
-    'master': Var('Master volume', 0.5, 0, 1, resolution=0.01),
-}
-
-
-def seq(fpq, notes):
-    while True:
-        note = choice(notes)
-        for _ in range(fpq):
-            yield note
+gui = GUI(
+    Var('tempo', 250, 50, 600),
+    Var('master-volume', 0.5, 0, 1, resolution=0.01),
+)
 
 
 def oscs():
@@ -27,14 +20,15 @@ def oscs():
 
 
 def gen(ctl):
-    notes = [it.value for it in Scales.major.notes]
+    notes = choicer(it.value for it in Scales.major.notes)
     s1 = oscs()
     s2 = oscs()
     s3 = oscs()
-    for note in seq(15, notes):
-        f = mtof(60 + note)
-        yield (s1(f) + s2(2*f) + s3(0.5*f)) / 3
+    while True:
+        f = mtof(60 + next(notes))
+        for _ in range(fps(60/ctl['tempo'])):
+            yield (s1(f) + s2(2*f) + s3(0.5*f)) / 3
 
 
 if __name__ == '__main__':
-    gui_play(ctl, gen(ctl))
+    gui.play(gen(gui.ctl))
