@@ -1761,9 +1761,13 @@ static PyObject *__pyx_builtin_id;
 static PyObject *__pyx_builtin_IndexError;
 static const char __pyx_k_O[] = "O";
 static const char __pyx_k_c[] = "c";
+static const char __pyx_k_f[] = "f";
 static const char __pyx_k_i[] = "i";
+static const char __pyx_k_q[] = "q";
+static const char __pyx_k_fb[] = "fb";
 static const char __pyx_k_id[] = "id";
-static const char __pyx_k_acc[] = "acc";
+static const char __pyx_k_s0[] = "s0";
+static const char __pyx_k_s1[] = "s1";
 static const char __pyx_k_dst[] = "dst";
 static const char __pyx_k_new[] = "__new__";
 static const char __pyx_k_obj[] = "obj";
@@ -1787,6 +1791,7 @@ static const char __pyx_k_flags[] = "flags";
 static const char __pyx_k_range[] = "range";
 static const char __pyx_k_shape[] = "shape";
 static const char __pyx_k_start[] = "start";
+static const char __pyx_k_state[] = "state";
 static const char __pyx_k_encode[] = "encode";
 static const char __pyx_k_format[] = "format";
 static const char __pyx_k_import[] = "__import__";
@@ -1874,7 +1879,6 @@ static PyObject *__pyx_n_s_TypeError;
 static PyObject *__pyx_kp_s_Unable_to_convert_item_to_object;
 static PyObject *__pyx_n_s_ValueError;
 static PyObject *__pyx_n_s_View_MemoryView;
-static PyObject *__pyx_n_s_acc;
 static PyObject *__pyx_n_s_allocate_buffer;
 static PyObject *__pyx_n_s_alpha;
 static PyObject *__pyx_n_s_base;
@@ -1890,6 +1894,8 @@ static PyObject *__pyx_n_s_dtype_is_object;
 static PyObject *__pyx_n_s_encode;
 static PyObject *__pyx_n_s_enumerate;
 static PyObject *__pyx_n_s_error;
+static PyObject *__pyx_n_s_f;
+static PyObject *__pyx_n_s_fb;
 static PyObject *__pyx_n_s_filters;
 static PyObject *__pyx_kp_s_filters_pyx;
 static PyObject *__pyx_n_s_flags;
@@ -1923,16 +1929,20 @@ static PyObject *__pyx_n_s_pyx_state;
 static PyObject *__pyx_n_s_pyx_type;
 static PyObject *__pyx_n_s_pyx_unpickle_Enum;
 static PyObject *__pyx_n_s_pyx_vtable;
+static PyObject *__pyx_n_s_q;
 static PyObject *__pyx_n_s_range;
 static PyObject *__pyx_n_s_reduce;
 static PyObject *__pyx_n_s_reduce_cython;
 static PyObject *__pyx_n_s_reduce_ex;
+static PyObject *__pyx_n_s_s0;
+static PyObject *__pyx_n_s_s1;
 static PyObject *__pyx_n_s_setstate;
 static PyObject *__pyx_n_s_setstate_cython;
 static PyObject *__pyx_n_s_shape;
 static PyObject *__pyx_n_s_size;
 static PyObject *__pyx_n_s_src;
 static PyObject *__pyx_n_s_start;
+static PyObject *__pyx_n_s_state;
 static PyObject *__pyx_n_s_step;
 static PyObject *__pyx_n_s_stop;
 static PyObject *__pyx_kp_s_strided_and_direct;
@@ -1945,7 +1955,7 @@ static PyObject *__pyx_kp_s_unable_to_allocate_array_data;
 static PyObject *__pyx_kp_s_unable_to_allocate_shape_and_str;
 static PyObject *__pyx_n_s_unpack;
 static PyObject *__pyx_n_s_update;
-static PyObject *__pyx_pf_7filters_lowpass(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_dst, __Pyx_memviewslice __pyx_v_src, __Pyx_memviewslice __pyx_v_alpha, float __pyx_v_acc); /* proto */
+static PyObject *__pyx_pf_7filters_lowpass(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_dst, __Pyx_memviewslice __pyx_v_src, __Pyx_memviewslice __pyx_v_alpha, float __pyx_v_q, __Pyx_memviewslice __pyx_v_state); /* proto */
 static int __pyx_array___pyx_pf_15View_dot_MemoryView_5array___cinit__(struct __pyx_array_obj *__pyx_v_self, PyObject *__pyx_v_shape, Py_ssize_t __pyx_v_itemsize, PyObject *__pyx_v_format, PyObject *__pyx_v_mode, int __pyx_v_allocate_buffer); /* proto */
 static int __pyx_array___pyx_pf_15View_dot_MemoryView_5array_2__getbuffer__(struct __pyx_array_obj *__pyx_v_self, Py_buffer *__pyx_v_info, int __pyx_v_flags); /* proto */
 static void __pyx_array___pyx_pf_15View_dot_MemoryView_5array_4__dealloc__(struct __pyx_array_obj *__pyx_v_self); /* proto */
@@ -2028,9 +2038,9 @@ static PyObject *__pyx_codeobj__27;
 /* "filters.pyx":6
  * @cython.wraparound(False)
  * @cython.initializedcheck(False)
- * def lowpass(float[::] dst, float[::] src, float[::] alpha, float acc):             # <<<<<<<<<<<<<<
- *     for i in range(len(src)):
- *         acc += alpha[i] * (src[i] - acc)
+ * def lowpass(float[:] dst, float[:] src, float[:] alpha, float q, float[:] state):             # <<<<<<<<<<<<<<
+ *     cdef float fb
+ *     cdef float s0 = state[0]
  */
 
 /* Python wrapper */
@@ -2040,7 +2050,8 @@ static PyObject *__pyx_pw_7filters_1lowpass(PyObject *__pyx_self, PyObject *__py
   __Pyx_memviewslice __pyx_v_dst = { 0, 0, { 0 }, { 0 }, { 0 } };
   __Pyx_memviewslice __pyx_v_src = { 0, 0, { 0 }, { 0 }, { 0 } };
   __Pyx_memviewslice __pyx_v_alpha = { 0, 0, { 0 }, { 0 }, { 0 } };
-  float __pyx_v_acc;
+  float __pyx_v_q;
+  __Pyx_memviewslice __pyx_v_state = { 0, 0, { 0 }, { 0 }, { 0 } };
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
@@ -2048,12 +2059,14 @@ static PyObject *__pyx_pw_7filters_1lowpass(PyObject *__pyx_self, PyObject *__py
   __Pyx_RefNannyDeclarations
   __Pyx_RefNannySetupContext("lowpass (wrapper)", 0);
   {
-    static PyObject **__pyx_pyargnames[] = {&__pyx_n_s_dst,&__pyx_n_s_src,&__pyx_n_s_alpha,&__pyx_n_s_acc,0};
-    PyObject* values[4] = {0,0,0,0};
+    static PyObject **__pyx_pyargnames[] = {&__pyx_n_s_dst,&__pyx_n_s_src,&__pyx_n_s_alpha,&__pyx_n_s_q,&__pyx_n_s_state,0};
+    PyObject* values[5] = {0,0,0,0,0};
     if (unlikely(__pyx_kwds)) {
       Py_ssize_t kw_args;
       const Py_ssize_t pos_args = PyTuple_GET_SIZE(__pyx_args);
       switch (pos_args) {
+        case  5: values[4] = PyTuple_GET_ITEM(__pyx_args, 4);
+        CYTHON_FALLTHROUGH;
         case  4: values[3] = PyTuple_GET_ITEM(__pyx_args, 3);
         CYTHON_FALLTHROUGH;
         case  3: values[2] = PyTuple_GET_ITEM(__pyx_args, 2);
@@ -2074,107 +2087,233 @@ static PyObject *__pyx_pw_7filters_1lowpass(PyObject *__pyx_self, PyObject *__py
         case  1:
         if (likely((values[1] = __Pyx_PyDict_GetItemStr(__pyx_kwds, __pyx_n_s_src)) != 0)) kw_args--;
         else {
-          __Pyx_RaiseArgtupleInvalid("lowpass", 1, 4, 4, 1); __PYX_ERR(0, 6, __pyx_L3_error)
+          __Pyx_RaiseArgtupleInvalid("lowpass", 1, 5, 5, 1); __PYX_ERR(0, 6, __pyx_L3_error)
         }
         CYTHON_FALLTHROUGH;
         case  2:
         if (likely((values[2] = __Pyx_PyDict_GetItemStr(__pyx_kwds, __pyx_n_s_alpha)) != 0)) kw_args--;
         else {
-          __Pyx_RaiseArgtupleInvalid("lowpass", 1, 4, 4, 2); __PYX_ERR(0, 6, __pyx_L3_error)
+          __Pyx_RaiseArgtupleInvalid("lowpass", 1, 5, 5, 2); __PYX_ERR(0, 6, __pyx_L3_error)
         }
         CYTHON_FALLTHROUGH;
         case  3:
-        if (likely((values[3] = __Pyx_PyDict_GetItemStr(__pyx_kwds, __pyx_n_s_acc)) != 0)) kw_args--;
+        if (likely((values[3] = __Pyx_PyDict_GetItemStr(__pyx_kwds, __pyx_n_s_q)) != 0)) kw_args--;
         else {
-          __Pyx_RaiseArgtupleInvalid("lowpass", 1, 4, 4, 3); __PYX_ERR(0, 6, __pyx_L3_error)
+          __Pyx_RaiseArgtupleInvalid("lowpass", 1, 5, 5, 3); __PYX_ERR(0, 6, __pyx_L3_error)
+        }
+        CYTHON_FALLTHROUGH;
+        case  4:
+        if (likely((values[4] = __Pyx_PyDict_GetItemStr(__pyx_kwds, __pyx_n_s_state)) != 0)) kw_args--;
+        else {
+          __Pyx_RaiseArgtupleInvalid("lowpass", 1, 5, 5, 4); __PYX_ERR(0, 6, __pyx_L3_error)
         }
       }
       if (unlikely(kw_args > 0)) {
         if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_pyargnames, 0, values, pos_args, "lowpass") < 0)) __PYX_ERR(0, 6, __pyx_L3_error)
       }
-    } else if (PyTuple_GET_SIZE(__pyx_args) != 4) {
+    } else if (PyTuple_GET_SIZE(__pyx_args) != 5) {
       goto __pyx_L5_argtuple_error;
     } else {
       values[0] = PyTuple_GET_ITEM(__pyx_args, 0);
       values[1] = PyTuple_GET_ITEM(__pyx_args, 1);
       values[2] = PyTuple_GET_ITEM(__pyx_args, 2);
       values[3] = PyTuple_GET_ITEM(__pyx_args, 3);
+      values[4] = PyTuple_GET_ITEM(__pyx_args, 4);
     }
     __pyx_v_dst = __Pyx_PyObject_to_MemoryviewSlice_ds_float(values[0], PyBUF_WRITABLE); if (unlikely(!__pyx_v_dst.memview)) __PYX_ERR(0, 6, __pyx_L3_error)
     __pyx_v_src = __Pyx_PyObject_to_MemoryviewSlice_ds_float(values[1], PyBUF_WRITABLE); if (unlikely(!__pyx_v_src.memview)) __PYX_ERR(0, 6, __pyx_L3_error)
     __pyx_v_alpha = __Pyx_PyObject_to_MemoryviewSlice_ds_float(values[2], PyBUF_WRITABLE); if (unlikely(!__pyx_v_alpha.memview)) __PYX_ERR(0, 6, __pyx_L3_error)
-    __pyx_v_acc = __pyx_PyFloat_AsFloat(values[3]); if (unlikely((__pyx_v_acc == (float)-1) && PyErr_Occurred())) __PYX_ERR(0, 6, __pyx_L3_error)
+    __pyx_v_q = __pyx_PyFloat_AsFloat(values[3]); if (unlikely((__pyx_v_q == (float)-1) && PyErr_Occurred())) __PYX_ERR(0, 6, __pyx_L3_error)
+    __pyx_v_state = __Pyx_PyObject_to_MemoryviewSlice_ds_float(values[4], PyBUF_WRITABLE); if (unlikely(!__pyx_v_state.memview)) __PYX_ERR(0, 6, __pyx_L3_error)
   }
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("lowpass", 1, 4, 4, PyTuple_GET_SIZE(__pyx_args)); __PYX_ERR(0, 6, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("lowpass", 1, 5, 5, PyTuple_GET_SIZE(__pyx_args)); __PYX_ERR(0, 6, __pyx_L3_error)
   __pyx_L3_error:;
   __Pyx_AddTraceback("filters.lowpass", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __Pyx_RefNannyFinishContext();
   return NULL;
   __pyx_L4_argument_unpacking_done:;
-  __pyx_r = __pyx_pf_7filters_lowpass(__pyx_self, __pyx_v_dst, __pyx_v_src, __pyx_v_alpha, __pyx_v_acc);
+  __pyx_r = __pyx_pf_7filters_lowpass(__pyx_self, __pyx_v_dst, __pyx_v_src, __pyx_v_alpha, __pyx_v_q, __pyx_v_state);
 
   /* function exit code */
   __Pyx_RefNannyFinishContext();
   return __pyx_r;
 }
 
-static PyObject *__pyx_pf_7filters_lowpass(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_dst, __Pyx_memviewslice __pyx_v_src, __Pyx_memviewslice __pyx_v_alpha, float __pyx_v_acc) {
+static PyObject *__pyx_pf_7filters_lowpass(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_dst, __Pyx_memviewslice __pyx_v_src, __Pyx_memviewslice __pyx_v_alpha, float __pyx_v_q, __Pyx_memviewslice __pyx_v_state) {
+  float __pyx_v_fb;
+  float __pyx_v_s0;
+  float __pyx_v_s1;
+  float __pyx_v_f;
   Py_ssize_t __pyx_v_i;
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
-  size_t __pyx_t_1;
-  Py_ssize_t __pyx_t_2;
+  Py_ssize_t __pyx_t_1;
+  size_t __pyx_t_2;
   Py_ssize_t __pyx_t_3;
   Py_ssize_t __pyx_t_4;
-  Py_ssize_t __pyx_t_5;
+  int __pyx_t_5;
+  double __pyx_t_6;
+  int __pyx_lineno = 0;
+  const char *__pyx_filename = NULL;
+  int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("lowpass", 0);
 
-  /* "filters.pyx":7
- * @cython.initializedcheck(False)
- * def lowpass(float[::] dst, float[::] src, float[::] alpha, float acc):
+  /* "filters.pyx":8
+ * def lowpass(float[:] dst, float[:] src, float[:] alpha, float q, float[:] state):
+ *     cdef float fb
+ *     cdef float s0 = state[0]             # <<<<<<<<<<<<<<
+ *     cdef float s1 = state[1]
+ *     cdef float f
+ */
+  __pyx_t_1 = 0;
+  __pyx_v_s0 = (*((float *) ( /* dim=0 */ (__pyx_v_state.data + __pyx_t_1 * __pyx_v_state.strides[0]) )));
+
+  /* "filters.pyx":9
+ *     cdef float fb
+ *     cdef float s0 = state[0]
+ *     cdef float s1 = state[1]             # <<<<<<<<<<<<<<
+ *     cdef float f
+ *     for i in range(len(src)):
+ */
+  __pyx_t_1 = 1;
+  __pyx_v_s1 = (*((float *) ( /* dim=0 */ (__pyx_v_state.data + __pyx_t_1 * __pyx_v_state.strides[0]) )));
+
+  /* "filters.pyx":11
+ *     cdef float s1 = state[1]
+ *     cdef float f
  *     for i in range(len(src)):             # <<<<<<<<<<<<<<
- *         acc += alpha[i] * (src[i] - acc)
- *         dst[i] = acc
+ *         f = alpha[i]
+ *         if f < 0.9999:
  */
-  __pyx_t_1 = __Pyx_MemoryView_Len(__pyx_v_src); 
-  __pyx_t_2 = __pyx_t_1;
-  for (__pyx_t_3 = 0; __pyx_t_3 < __pyx_t_2; __pyx_t_3+=1) {
-    __pyx_v_i = __pyx_t_3;
+  __pyx_t_2 = __Pyx_MemoryView_Len(__pyx_v_src); 
+  __pyx_t_3 = __pyx_t_2;
+  for (__pyx_t_4 = 0; __pyx_t_4 < __pyx_t_3; __pyx_t_4+=1) {
+    __pyx_v_i = __pyx_t_4;
 
-    /* "filters.pyx":8
- * def lowpass(float[::] dst, float[::] src, float[::] alpha, float acc):
+    /* "filters.pyx":12
+ *     cdef float f
  *     for i in range(len(src)):
- *         acc += alpha[i] * (src[i] - acc)             # <<<<<<<<<<<<<<
- *         dst[i] = acc
+ *         f = alpha[i]             # <<<<<<<<<<<<<<
+ *         if f < 0.9999:
+ *             fb = q + q/(1.0 - f)
  */
-    __pyx_t_4 = __pyx_v_i;
-    __pyx_t_5 = __pyx_v_i;
-    __pyx_v_acc = (__pyx_v_acc + ((*((float *) ( /* dim=0 */ (__pyx_v_alpha.data + __pyx_t_4 * __pyx_v_alpha.strides[0]) ))) * ((*((float *) ( /* dim=0 */ (__pyx_v_src.data + __pyx_t_5 * __pyx_v_src.strides[0]) ))) - __pyx_v_acc)));
+    __pyx_t_1 = __pyx_v_i;
+    __pyx_v_f = (*((float *) ( /* dim=0 */ (__pyx_v_alpha.data + __pyx_t_1 * __pyx_v_alpha.strides[0]) )));
 
-    /* "filters.pyx":9
+    /* "filters.pyx":13
  *     for i in range(len(src)):
- *         acc += alpha[i] * (src[i] - acc)
- *         dst[i] = acc             # <<<<<<<<<<<<<<
+ *         f = alpha[i]
+ *         if f < 0.9999:             # <<<<<<<<<<<<<<
+ *             fb = q + q/(1.0 - f)
+ *         else:
  */
-    __pyx_t_5 = __pyx_v_i;
-    *((float *) ( /* dim=0 */ (__pyx_v_dst.data + __pyx_t_5 * __pyx_v_dst.strides[0]) )) = __pyx_v_acc;
+    __pyx_t_5 = ((__pyx_v_f < 0.9999) != 0);
+    if (__pyx_t_5) {
+
+      /* "filters.pyx":14
+ *         f = alpha[i]
+ *         if f < 0.9999:
+ *             fb = q + q/(1.0 - f)             # <<<<<<<<<<<<<<
+ *         else:
+ *             fb = 0.0
+ */
+      __pyx_t_6 = (1.0 - __pyx_v_f);
+      if (unlikely(__pyx_t_6 == 0)) {
+        PyErr_SetString(PyExc_ZeroDivisionError, "float division");
+        __PYX_ERR(0, 14, __pyx_L1_error)
+      }
+      __pyx_v_fb = (__pyx_v_q + (((double)__pyx_v_q) / __pyx_t_6));
+
+      /* "filters.pyx":13
+ *     for i in range(len(src)):
+ *         f = alpha[i]
+ *         if f < 0.9999:             # <<<<<<<<<<<<<<
+ *             fb = q + q/(1.0 - f)
+ *         else:
+ */
+      goto __pyx_L5;
+    }
+
+    /* "filters.pyx":16
+ *             fb = q + q/(1.0 - f)
+ *         else:
+ *             fb = 0.0             # <<<<<<<<<<<<<<
+ *         s0 = s0 + f * (src[i] - s0 + fb * (s0 - s1))
+ *         s1 = s1 + f * (s0 - s1);
+ */
+    /*else*/ {
+      __pyx_v_fb = 0.0;
+    }
+    __pyx_L5:;
+
+    /* "filters.pyx":17
+ *         else:
+ *             fb = 0.0
+ *         s0 = s0 + f * (src[i] - s0 + fb * (s0 - s1))             # <<<<<<<<<<<<<<
+ *         s1 = s1 + f * (s0 - s1);
+ *         dst[i] = s1
+ */
+    __pyx_t_1 = __pyx_v_i;
+    __pyx_v_s0 = (__pyx_v_s0 + (__pyx_v_f * (((*((float *) ( /* dim=0 */ (__pyx_v_src.data + __pyx_t_1 * __pyx_v_src.strides[0]) ))) - __pyx_v_s0) + (__pyx_v_fb * (__pyx_v_s0 - __pyx_v_s1)))));
+
+    /* "filters.pyx":18
+ *             fb = 0.0
+ *         s0 = s0 + f * (src[i] - s0 + fb * (s0 - s1))
+ *         s1 = s1 + f * (s0 - s1);             # <<<<<<<<<<<<<<
+ *         dst[i] = s1
+ * 
+ */
+    __pyx_v_s1 = (__pyx_v_s1 + (__pyx_v_f * (__pyx_v_s0 - __pyx_v_s1)));
+
+    /* "filters.pyx":19
+ *         s0 = s0 + f * (src[i] - s0 + fb * (s0 - s1))
+ *         s1 = s1 + f * (s0 - s1);
+ *         dst[i] = s1             # <<<<<<<<<<<<<<
+ * 
+ *     state[0] = s0
+ */
+    __pyx_t_1 = __pyx_v_i;
+    *((float *) ( /* dim=0 */ (__pyx_v_dst.data + __pyx_t_1 * __pyx_v_dst.strides[0]) )) = __pyx_v_s1;
   }
+
+  /* "filters.pyx":21
+ *         dst[i] = s1
+ * 
+ *     state[0] = s0             # <<<<<<<<<<<<<<
+ *     state[1] = s1
+ */
+  __pyx_t_1 = 0;
+  *((float *) ( /* dim=0 */ (__pyx_v_state.data + __pyx_t_1 * __pyx_v_state.strides[0]) )) = __pyx_v_s0;
+
+  /* "filters.pyx":22
+ * 
+ *     state[0] = s0
+ *     state[1] = s1             # <<<<<<<<<<<<<<
+ */
+  __pyx_t_1 = 1;
+  *((float *) ( /* dim=0 */ (__pyx_v_state.data + __pyx_t_1 * __pyx_v_state.strides[0]) )) = __pyx_v_s1;
 
   /* "filters.pyx":6
  * @cython.wraparound(False)
  * @cython.initializedcheck(False)
- * def lowpass(float[::] dst, float[::] src, float[::] alpha, float acc):             # <<<<<<<<<<<<<<
- *     for i in range(len(src)):
- *         acc += alpha[i] * (src[i] - acc)
+ * def lowpass(float[:] dst, float[:] src, float[:] alpha, float q, float[:] state):             # <<<<<<<<<<<<<<
+ *     cdef float fb
+ *     cdef float s0 = state[0]
  */
 
   /* function exit code */
   __pyx_r = Py_None; __Pyx_INCREF(Py_None);
+  goto __pyx_L0;
+  __pyx_L1_error:;
+  __Pyx_AddTraceback("filters.lowpass", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __pyx_r = NULL;
+  __pyx_L0:;
   __PYX_XDEC_MEMVIEW(&__pyx_v_dst, 1);
   __PYX_XDEC_MEMVIEW(&__pyx_v_src, 1);
   __PYX_XDEC_MEMVIEW(&__pyx_v_alpha, 1);
+  __PYX_XDEC_MEMVIEW(&__pyx_v_state, 1);
   __Pyx_XGIVEREF(__pyx_r);
   __Pyx_RefNannyFinishContext();
   return __pyx_r;
@@ -15982,7 +16121,6 @@ static __Pyx_StringTabEntry __pyx_string_tab[] = {
   {&__pyx_kp_s_Unable_to_convert_item_to_object, __pyx_k_Unable_to_convert_item_to_object, sizeof(__pyx_k_Unable_to_convert_item_to_object), 0, 0, 1, 0},
   {&__pyx_n_s_ValueError, __pyx_k_ValueError, sizeof(__pyx_k_ValueError), 0, 0, 1, 1},
   {&__pyx_n_s_View_MemoryView, __pyx_k_View_MemoryView, sizeof(__pyx_k_View_MemoryView), 0, 0, 1, 1},
-  {&__pyx_n_s_acc, __pyx_k_acc, sizeof(__pyx_k_acc), 0, 0, 1, 1},
   {&__pyx_n_s_allocate_buffer, __pyx_k_allocate_buffer, sizeof(__pyx_k_allocate_buffer), 0, 0, 1, 1},
   {&__pyx_n_s_alpha, __pyx_k_alpha, sizeof(__pyx_k_alpha), 0, 0, 1, 1},
   {&__pyx_n_s_base, __pyx_k_base, sizeof(__pyx_k_base), 0, 0, 1, 1},
@@ -15998,6 +16136,8 @@ static __Pyx_StringTabEntry __pyx_string_tab[] = {
   {&__pyx_n_s_encode, __pyx_k_encode, sizeof(__pyx_k_encode), 0, 0, 1, 1},
   {&__pyx_n_s_enumerate, __pyx_k_enumerate, sizeof(__pyx_k_enumerate), 0, 0, 1, 1},
   {&__pyx_n_s_error, __pyx_k_error, sizeof(__pyx_k_error), 0, 0, 1, 1},
+  {&__pyx_n_s_f, __pyx_k_f, sizeof(__pyx_k_f), 0, 0, 1, 1},
+  {&__pyx_n_s_fb, __pyx_k_fb, sizeof(__pyx_k_fb), 0, 0, 1, 1},
   {&__pyx_n_s_filters, __pyx_k_filters, sizeof(__pyx_k_filters), 0, 0, 1, 1},
   {&__pyx_kp_s_filters_pyx, __pyx_k_filters_pyx, sizeof(__pyx_k_filters_pyx), 0, 0, 1, 0},
   {&__pyx_n_s_flags, __pyx_k_flags, sizeof(__pyx_k_flags), 0, 0, 1, 1},
@@ -16031,16 +16171,20 @@ static __Pyx_StringTabEntry __pyx_string_tab[] = {
   {&__pyx_n_s_pyx_type, __pyx_k_pyx_type, sizeof(__pyx_k_pyx_type), 0, 0, 1, 1},
   {&__pyx_n_s_pyx_unpickle_Enum, __pyx_k_pyx_unpickle_Enum, sizeof(__pyx_k_pyx_unpickle_Enum), 0, 0, 1, 1},
   {&__pyx_n_s_pyx_vtable, __pyx_k_pyx_vtable, sizeof(__pyx_k_pyx_vtable), 0, 0, 1, 1},
+  {&__pyx_n_s_q, __pyx_k_q, sizeof(__pyx_k_q), 0, 0, 1, 1},
   {&__pyx_n_s_range, __pyx_k_range, sizeof(__pyx_k_range), 0, 0, 1, 1},
   {&__pyx_n_s_reduce, __pyx_k_reduce, sizeof(__pyx_k_reduce), 0, 0, 1, 1},
   {&__pyx_n_s_reduce_cython, __pyx_k_reduce_cython, sizeof(__pyx_k_reduce_cython), 0, 0, 1, 1},
   {&__pyx_n_s_reduce_ex, __pyx_k_reduce_ex, sizeof(__pyx_k_reduce_ex), 0, 0, 1, 1},
+  {&__pyx_n_s_s0, __pyx_k_s0, sizeof(__pyx_k_s0), 0, 0, 1, 1},
+  {&__pyx_n_s_s1, __pyx_k_s1, sizeof(__pyx_k_s1), 0, 0, 1, 1},
   {&__pyx_n_s_setstate, __pyx_k_setstate, sizeof(__pyx_k_setstate), 0, 0, 1, 1},
   {&__pyx_n_s_setstate_cython, __pyx_k_setstate_cython, sizeof(__pyx_k_setstate_cython), 0, 0, 1, 1},
   {&__pyx_n_s_shape, __pyx_k_shape, sizeof(__pyx_k_shape), 0, 0, 1, 1},
   {&__pyx_n_s_size, __pyx_k_size, sizeof(__pyx_k_size), 0, 0, 1, 1},
   {&__pyx_n_s_src, __pyx_k_src, sizeof(__pyx_k_src), 0, 0, 1, 1},
   {&__pyx_n_s_start, __pyx_k_start, sizeof(__pyx_k_start), 0, 0, 1, 1},
+  {&__pyx_n_s_state, __pyx_k_state, sizeof(__pyx_k_state), 0, 0, 1, 1},
   {&__pyx_n_s_step, __pyx_k_step, sizeof(__pyx_k_step), 0, 0, 1, 1},
   {&__pyx_n_s_stop, __pyx_k_stop, sizeof(__pyx_k_stop), 0, 0, 1, 1},
   {&__pyx_kp_s_strided_and_direct, __pyx_k_strided_and_direct, sizeof(__pyx_k_strided_and_direct), 0, 0, 1, 0},
@@ -16056,7 +16200,7 @@ static __Pyx_StringTabEntry __pyx_string_tab[] = {
   {0, 0, 0, 0, 0, 0, 0}
 };
 static CYTHON_SMALL_CODE int __Pyx_InitCachedBuiltins(void) {
-  __pyx_builtin_range = __Pyx_GetBuiltinName(__pyx_n_s_range); if (!__pyx_builtin_range) __PYX_ERR(0, 7, __pyx_L1_error)
+  __pyx_builtin_range = __Pyx_GetBuiltinName(__pyx_n_s_range); if (!__pyx_builtin_range) __PYX_ERR(0, 11, __pyx_L1_error)
   __pyx_builtin_ValueError = __Pyx_GetBuiltinName(__pyx_n_s_ValueError); if (!__pyx_builtin_ValueError) __PYX_ERR(1, 133, __pyx_L1_error)
   __pyx_builtin_MemoryError = __Pyx_GetBuiltinName(__pyx_n_s_MemoryError); if (!__pyx_builtin_MemoryError) __PYX_ERR(1, 148, __pyx_L1_error)
   __pyx_builtin_enumerate = __Pyx_GetBuiltinName(__pyx_n_s_enumerate); if (!__pyx_builtin_enumerate) __PYX_ERR(1, 151, __pyx_L1_error)
@@ -16268,14 +16412,14 @@ static CYTHON_SMALL_CODE int __Pyx_InitCachedConstants(void) {
   /* "filters.pyx":6
  * @cython.wraparound(False)
  * @cython.initializedcheck(False)
- * def lowpass(float[::] dst, float[::] src, float[::] alpha, float acc):             # <<<<<<<<<<<<<<
- *     for i in range(len(src)):
- *         acc += alpha[i] * (src[i] - acc)
+ * def lowpass(float[:] dst, float[:] src, float[:] alpha, float q, float[:] state):             # <<<<<<<<<<<<<<
+ *     cdef float fb
+ *     cdef float s0 = state[0]
  */
-  __pyx_tuple__19 = PyTuple_Pack(5, __pyx_n_s_dst, __pyx_n_s_src, __pyx_n_s_alpha, __pyx_n_s_acc, __pyx_n_s_i); if (unlikely(!__pyx_tuple__19)) __PYX_ERR(0, 6, __pyx_L1_error)
+  __pyx_tuple__19 = PyTuple_Pack(10, __pyx_n_s_dst, __pyx_n_s_src, __pyx_n_s_alpha, __pyx_n_s_q, __pyx_n_s_state, __pyx_n_s_fb, __pyx_n_s_s0, __pyx_n_s_s1, __pyx_n_s_f, __pyx_n_s_i); if (unlikely(!__pyx_tuple__19)) __PYX_ERR(0, 6, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__19);
   __Pyx_GIVEREF(__pyx_tuple__19);
-  __pyx_codeobj__20 = (PyObject*)__Pyx_PyCode_New(4, 0, 5, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__19, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_filters_pyx, __pyx_n_s_lowpass, 6, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__20)) __PYX_ERR(0, 6, __pyx_L1_error)
+  __pyx_codeobj__20 = (PyObject*)__Pyx_PyCode_New(5, 0, 10, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__19, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_filters_pyx, __pyx_n_s_lowpass, 6, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__20)) __PYX_ERR(0, 6, __pyx_L1_error)
 
   /* "View.MemoryView":286
  *         return self.name
@@ -16689,9 +16833,9 @@ if (!__Pyx_RefNanny) {
   /* "filters.pyx":6
  * @cython.wraparound(False)
  * @cython.initializedcheck(False)
- * def lowpass(float[::] dst, float[::] src, float[::] alpha, float acc):             # <<<<<<<<<<<<<<
- *     for i in range(len(src)):
- *         acc += alpha[i] * (src[i] - acc)
+ * def lowpass(float[:] dst, float[:] src, float[:] alpha, float q, float[:] state):             # <<<<<<<<<<<<<<
+ *     cdef float fb
+ *     cdef float s0 = state[0]
  */
   __pyx_t_1 = PyCFunction_NewEx(&__pyx_mdef_7filters_1lowpass, NULL, __pyx_n_s_filters); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 6, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);

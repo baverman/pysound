@@ -199,15 +199,15 @@ def sps(duration=1):
 
 def lowpass():
     result = np.empty(BUFSIZE, dtype=np.float32)
-    result[-1] = 0
+    state = np.zeros(2, dtype=np.float32)
 
-    def gen(data, cutoff):
+    def gen(data, cutoff, resonance=0):
         if type(cutoff) in (int, float):
             alpha = np.full(data.shape[0], cutoff/FREQ, dtype=np.float32)
         else:
             alpha = cutoff / FREQ
 
-        filters.lowpass(result, data, alpha, result[-1])
+        filters.lowpass(result, data, alpha, resonance, state)
         return result
 
     return gen

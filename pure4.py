@@ -15,6 +15,7 @@ gui = GUI(
     Var('filter-hold', 1, 1, 1000),
     Var('filter-release', 200, 1, 2000),
     Var('filter-cutoff', 15000, 100, 20000),
+    Var('filter-resonance', 0, 0, 1, resolution=0.01),
     Var('master-volume', 0.2, 0, 1, resolution=0.01),
 )
 
@@ -27,7 +28,7 @@ def synth(ctl, f):
     while line.running:
         sig = o(f)
         if ctl['filter-on'] > 0:
-            sig = lp(sig, fline()**2*ctl['filter-cutoff'])
+            sig = lp(sig, fline()**4 * ctl['filter-cutoff'], ctl['filter-resonance'])
         yield sig * line()**4
 
 
