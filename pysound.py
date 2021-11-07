@@ -233,5 +233,5 @@ def play(ctl, gen):
             dsp.write((frame * 32767).astype(np.int16))
             cnt += len(frame)
         else:
-            time.sleep((cnt - need_samples)/FREQ)
+            time.sleep((cnt + BUFSIZE/2 - need_samples)/FREQ)
     dsp.sync()
