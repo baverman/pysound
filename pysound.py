@@ -222,7 +222,7 @@ def lowpass():
     return sig
 
 
-def dcfilter(r=0.9):
+def dcfilter(r=0.98):
     result = np.empty(BUFSIZE, dtype=np.float32)
     state = np.zeros(2, dtype=np.float32)
 
