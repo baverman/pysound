@@ -20,3 +20,17 @@ def lowpass(float[:] dst, float[:] src, float[:] alpha, float q, float[:] state)
 
     state[0] = s0
     state[1] = s1
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.initializedcheck(False)
+def dcfilter(float[:] dst, float[:] src, float[:] state, float R):
+    cdef float px = state[0]
+    cdef float py = state[1]
+    for i in range(len(src)):
+        py = dst[i] = src[i] - px + R*py
+        px = src[i]
+
+    state[0] = px
+    state[1] = py

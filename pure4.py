@@ -1,7 +1,6 @@
 #padsp python
 # Acid
 # https://www.youtube.com/watch?v=_qImZOcHz2U&list=PLqJgTfn3kSMW3AAAl2liJRKd-7DhZwLlq&index=4
-from random import choice
 from pysound import GUI, Var, mtof, lowpass, phasor, fps, poly, choicer, env_ahr
 from tonator import Scales
 

@@ -50,9 +50,7 @@ class phasor:
         self.freq = freq
 
     def __call__(self, freq):
-        if type(freq) in (int, float):
-            freq = np.full(BUFSIZE, freq, dtype=np.float32)
-        result = np.cumsum(freq / self.freq)
+        result = np.cumsum(ensure_buf(freq) / self.freq)
         if result[-1] != 0:
             result += self.phase
         result %= 1
@@ -67,6 +65,19 @@ class osc:
 
     def __call__(self, freq):
         return np.interp(self.phasor(freq), *self.table).astype(np.float32)
+
+
+def ensure_buf(value):
+    if type(value) in (int, float):
+        return np.full(BUFSIZE, value, dtype=np.float32)
+    return value
+
+
+def square():
+    o = phasor()
+    def sig(f, duty):
+        return (o(f) > ensure_buf(duty)).astype(np.float32) * 2.0 - 1.0
+    return sig
 
 
 def env_ahr(attack, hold, release, last=None):
@@ -203,16 +214,23 @@ def lowpass():
     result = np.empty(BUFSIZE, dtype=np.float32)
     state = np.zeros(2, dtype=np.float32)
 
-    def gen(data, cutoff, resonance=0):
-        if type(cutoff) in (int, float):
-            alpha = np.full(data.shape[0], cutoff/FREQ, dtype=np.float32)
-        else:
-            alpha = cutoff / FREQ
-
+    def sig(data, cutoff, resonance=0):
+        alpha = ensure_buf(cutoff) / FREQ
         filters.lowpass(result, data, alpha, resonance, state)
         return result
 
-    return gen
+    return sig
+
+
+def dcfilter(r=0.9):
+    result = np.empty(BUFSIZE, dtype=np.float32)
+    state = np.zeros(2, dtype=np.float32)
+
+    def sig(data):
+        filters.dcfilter(result, data, state, r)
+        return result
+
+    return sig
 
 
 @scream
@@ -235,3 +253,12 @@ def play(ctl, gen):
         else:
             time.sleep((cnt + BUFSIZE/2 - need_samples)/FREQ)
     dsp.sync()
+
+
+def render_to_file(fname, ctl, gen, duration):
+    with open_wav_f32(fname) as f:
+        for _ in range(fps(duration)):
+            frame = next(gen, None) * ctl['master-volume']
+            if frame is None:
+                break
+            f.writeframes(frame)
