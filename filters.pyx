@@ -34,3 +34,13 @@ def dcfilter(float[:] dst, float[:] src, float[:] state, float R):
 
     state[0] = px
     state[1] = py
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.initializedcheck(False)
+def delay_process(float[:] buf, float[:] sig, ssize_t shift, float feedback):
+    cdef ssize_t i
+    cdef ssize_t start = len(buf) - len(sig)
+    for i in range(len(sig)):
+        buf[start+i] = buf[start+i-shift] * feedback + sig[i]

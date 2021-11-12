@@ -80,6 +80,10 @@ def square():
     return sig
 
 
+def noise():
+    return np.random.rand(BUFSIZE).astype(np.float32) * 2.0 - 1.0
+
+
 def env_ahr(attack, hold, release, last=None):
     last = last or 0
     acnt = sps(attack / 1000)
@@ -231,6 +235,17 @@ def dcfilter(r=0.98):
         return result
 
     return sig
+
+
+def delay(max_duration=0.5):
+    buf = np.full(sps(max_duration), 0, dtype=np.float32)
+    def process(sig, delay, feedback):
+        size = len(sig)
+        shift = sps(delay)
+        buf[:-size] = buf[size:]
+        filters.delay_process(buf, sig, shift, feedback)
+        return buf[-size:].copy()
+    return process
 
 
 @scream

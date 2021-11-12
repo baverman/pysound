@@ -27,6 +27,18 @@ def square_mod():
     return sig
 
 
+def dcblock():
+    import numpy as np
+    mean = 0
+    def do(sig):
+        nonlocal mean
+        newmean = np.mean(sig)
+        sig = sig - newmean
+        mean = newmean
+        return sig
+    return do
+
+
 def synth(ctl, f):
     o1 = square_mod()
     o2 = square_mod()
@@ -41,7 +53,7 @@ def synth(ctl, f):
 def gen(ctl):
     notes = choicer(it.value for it in Scales.major.notes)
     p = poly()
-    dc = dcfilter()
+    dc = dcblock()
     while True:
         f = mtof(60 + next(notes))
         p.add(synth(ctl, f))
@@ -50,4 +62,6 @@ def gen(ctl):
 
 
 if __name__ == '__main__':
-    gui.play(gen(gui.ctl))
+    from pysound import render_to_file
+    render_to_file('/tmp/boo.wav', gui.ctl, gen(gui.ctl), 5)
+    # gui.play(gen(gui.ctl))
