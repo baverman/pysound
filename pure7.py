@@ -62,6 +62,4 @@ def gen(ctl):
 
 
 if __name__ == '__main__':
-    from pysound import render_to_file
-    render_to_file('/tmp/boo.wav', gui.ctl, gen(gui.ctl), 5)
-    # gui.play(gen(gui.ctl))
+    gui.play(gen(gui.ctl))
