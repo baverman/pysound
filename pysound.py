@@ -6,7 +6,8 @@ import wave
 import random
 import pprint
 
-import filters
+import cfilters
+from cfilters import addr
 
 FREQ = 44100
 BUFSIZE = 512
@@ -217,10 +218,12 @@ def sps(duration=1):
 def lowpass():
     result = np.empty(BUFSIZE, dtype=np.float32)
     state = np.zeros(2, dtype=np.float32)
+    ra = addr(result)
+    sa = addr(state)
 
     def sig(data, cutoff, resonance=0):
         alpha = ensure_buf(cutoff) / FREQ
-        filters.lowpass(result, data, alpha, resonance, state)
+        cfilters.lowpass(ra, addr(data), len(data), addr(alpha), resonance, sa)
         return result
 
     return sig
@@ -229,9 +232,12 @@ def lowpass():
 def dcfilter(r=0.98):
     result = np.empty(BUFSIZE, dtype=np.float32)
     state = np.zeros(2, dtype=np.float32)
+    ra = addr(result)
+    sa = addr(state)
 
     def sig(data):
-        filters.dcfilter(result, data, state, r)
+        # print(state, sa[0], sa[1])
+        cfilters.dcfilter(ra, addr(data), len(data), sa, r)
         return result
 
     return sig
@@ -239,11 +245,12 @@ def dcfilter(r=0.98):
 
 def delay(max_duration=0.5):
     buf = np.full(sps(max_duration), 0, dtype=np.float32)
+    ba = addr(buf)
     def process(sig, delay, feedback):
         size = len(sig)
         shift = sps(delay)
         buf[:-size] = buf[size:]
-        filters.delay_process(buf, sig, shift, feedback)
+        cfilters.delay_process(ba, len(buf), addr(sig), len(sig), shift, feedback)
         return buf[-size:].copy()
     return process
 

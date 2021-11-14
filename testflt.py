@@ -3,7 +3,9 @@ import numpy as np
 from scipy import signal
 import matplotlib.pyplot as plt
 from pysound import FREQ, square_unlim_t, osc, fft_plot, env_ahr, fps, dcfilter, sps, noise, lowpass, sin_t
+from pysound import cdcfilter, ffidcfilter
 from timeit_helper import timeit
+import cProfile
 
 def dcblock():
     mean = 0
@@ -48,5 +50,29 @@ d = delay_slow()
 f = lowpass()
 sig = np.concatenate([d(noise()*env(), 0.011, 0.99) for _ in range(fps(0.1))])
 
-plt.plot(sig)
+ss = sig[:512]
+
+flt1 = dcfilter()
+flt2 = cdcfilter()
+flt3 = ffidcfilter()
+
+# timeit('flt1(ss)')
+# timeit('flt2(ss)')
+# timeit('flt3(ss)')
+
+# def boo():
+#     for _ in range(100000):
+#         flt2(ss)
+#
+# from ctypes import addressof
+# cProfile.run("boo()", sort='tottime')
+
+# ss = o(440)
+#
+figure, axis = plt.subplots(3, 1)
+
+axis[0].plot(flt1(ss))
+axis[1].plot(flt3(ss))
+axis[2].plot(ss)
+
 plt.show()

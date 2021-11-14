@@ -1,4 +1,5 @@
 /__pycache__
 /build
 *.so
-filters.html
+_cfilters.*
+
