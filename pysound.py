@@ -1,3 +1,4 @@
+import os
 import time
 import numpy as np
 import ossaudiodev
@@ -271,6 +272,39 @@ def show_window(controls, width):
     canvas.configure(yscrollcommand=scrollbar.set)
 
     notebook = None
+    midi_ctrl_map = {}
+    midi_ctrl = None
+
+    def get_label(w):
+        if w.pysound_param is not None:
+            return f'{w.orig_label} ctrl:{w.pysound_param}'
+        else:
+            return w.orig_label
+
+    def midi_cb(etype, value):
+        print(etype, value)
+        nonlocal midi_ctrl
+        if etype == 2:
+            ch, param, v = value
+            if midi_ctrl is not None:
+                midi_ctrl.pysound_param = param
+                midi_ctrl_map[param] = midi_ctrl
+                midi_ctrl['label'] = get_label(midi_ctrl)
+            elif param in midi_ctrl_map:
+                w = midi_ctrl_map[param]
+                value = w['from'] + (w['to'] - w['from']) * v / 127
+                # w.pysound_set_cb(value)
+                w.set(value)
+
+    def set_midi_ctrl(e):
+        nonlocal midi_ctrl
+        midi_ctrl = e.widget
+        e.widget['label'] = e.widget.orig_label + ' (waiting midi...)'
+
+    def release_midi_ctrl(e):
+        nonlocal midi_ctrl
+        midi_ctrl = None
+        e.widget['label'] = get_label(e.widget)
 
     def pack_controls(parent, controls):
         nonlocal notebook
@@ -283,14 +317,26 @@ def show_window(controls, width):
                 notebook.add(nf, text=v.label)
                 pack_controls(nf, v)
             else:
+                set_cb = controls.command(v)
                 w = tk.Scale(parent, label=v.label, from_=v.min, to=v.max, orient=tk.HORIZONTAL,
-                             length=width, command=controls.command(v), resolution=v.resolution)
+                             length=width, command=set_cb, resolution=v.resolution)
+                w.orig_label = v.label
+                w.pysound_param = None
+                w.pysound_set_cb = set_cb
+                w.bind('<ButtonPress-3>', set_midi_ctrl)
+                w.bind('<ButtonRelease-3>', release_midi_ctrl)
                 w.set(v.val)
                 w.pack()
 
     pack_controls(scrollable_frame, controls)
     canvas.pack(side="left", fill="both", expand=True)
     scrollbar.pack(side="right", fill="y")
+
+    source = os.environ.get('MIDI_SOURCE')
+    if source:
+        import asound
+        t = threading.Thread(target=asound.listen, args=(source, midi_cb), daemon=True)
+        t.start()
 
     tk.mainloop()
     pprint.pprint(controls.ctl)
