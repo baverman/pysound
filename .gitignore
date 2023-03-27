@@ -1,5 +1,7 @@
 /__pycache__
 /build
 *.so
+*.o
 _cfilters.*
+*.txt
 

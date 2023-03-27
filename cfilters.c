@@ -2,6 +2,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "cfilters.h"
+
 void dcfilter(float dst[], const float src[], size_t n, float state[], float R) {
     float px = state[0];
     float py = state[1];
@@ -40,5 +42,39 @@ void delay_process(float buf[], size_t buf_size, const float src[], size_t src_s
     size_t start = buf_size - src_size;
     for(; i < src_size; i++, start++) {
         buf[start] = buf[start-shift] * feedback + src[i];
+    }
+}
+
+void delwrite(struct ring_buf *buf, const float src[], size_t length) {
+    size_t i, j;
+    for(i=0, j=buf->start; i < length; i++, j++) {
+        buf->data[j & buf->length_mask] = src[i];
+    }
+    buf->start = j & buf->length_mask;
+}
+
+/*
+d = 3
+--------s------
+-----*--s------  i = 0
+------*-s------  i = 1
+-------*s------  i = 2
+--------S------  i = 3
+
+*/
+
+void delmix(struct ring_buf *buf, float dst[], const float src[], int length,
+            const int32_t delay_samples[]) {
+    size_t k;
+    int i, j;
+    float v;
+    for(i=0, j=buf->start; i < length; i++, j++) {
+        if (delay_samples[i] <= i) {
+            v = dst[i - delay_samples[i]];
+        } else {
+            k = (j - delay_samples[i]) & buf->length_mask;
+            v = buf->data[k];
+        }
+        dst[i] = src[i] + v;
     }
 }

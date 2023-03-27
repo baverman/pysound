@@ -1,6 +1,7 @@
 #padsp python
 import math
 import wave
+import numpy as np
 import matplotlib.pyplot as plt
 from itertools import islice
 import time
@@ -8,6 +9,7 @@ import ossaudiodev
 import threading
 
 import keys
+from pysound import Var, osc, sin_t, saw_t, square_t, square_unlim_t, FREQ, mtof, GUI
 
 
 _KEYNOTES1 = ['z', 's', 'x', 'd', 'c', 'v', 'g', 'b', 'h', 'n', 'j', 'm',
@@ -18,13 +20,13 @@ KEYNOTES = {it: i for i, it in enumerate(_KEYNOTES1)}
 KEYNOTES.update({it: i + 12 for i, it in enumerate(_KEYNOTES2)})
 
 
-def fm(ctl, base_freq, n):
+def fm(ctl, base_freq):
     o = osc([sin_t, saw_t, square_t, square_unlim_t][int(ctl['waveform'])-1])
     f = osc(sin_t)
     while True:
-        harm = ctl['harm'].val
-        depth = base_freq * harm * ctl['mod-index'].val
-        mf = f(base_freq * harm, n)
+        harm = ctl['harm']
+        depth = base_freq * harm * ctl['mod-index']
+        mf = f(base_freq * harm)
         frame = o(base_freq + mf * depth)
         yield frame
 
@@ -67,16 +69,16 @@ def ins(ctl, n):
     scount = 0
     sustain = -1
     while True:
-        attack = ctl['attack'].val, 1
-        decay = ctl['decay'].val, 0.7
-        release = ctl['release'].val
+        attack = ctl['attack'], 1
+        decay = ctl['decay'], 0.7
+        release = ctl['release']
         pressed = ctl.get('keys', [])
         new_keys = set(it for it in pressed  if it in KEYNOTES) - set(gens)
         depressed = set(gens) - set(pressed)
 
         for key in new_keys:
             gens[key] = {
-                'g': fm(ctl, get_note(12*ctl['octave'].val + KEYNOTES[key]), n),
+                'g': fm(ctl, mtof(12*ctl['octave'] + KEYNOTES[key])),
                 'start': scount,
                 'release': -1,
                 'stopped': False
@@ -94,23 +96,20 @@ def ins(ctl, n):
             if g['stopped']:
                 rgens.pop(key)
 
-        yield result * ctl['volume'].val
+        yield result
         scount += n
 
 
-ctl = {
+gui = GUI(
     # 'base': Var('Base', 330, 50, 600),
-    'octave': Var('Octave', 4, 0, 6, resolution=1),
-    'attack': Var('Attack', 0.05, 0, 0.5, resolution=0.001),
-    'decay': Var('Decay', 0.1, 0, 0.5, resolution=0.001),
-    'release': Var('Release', 0.5, 0, 5, resolution=0.01),
-    'waveform': Var('Wave form', 1, 1, 4, resolution=1),
-    'harm': Var('Harmonicity', 0, 0, 4, resolution=0.01),
-    'mod-index': Var('Modulation index', 0, 0, 10, resolution=0.1),
-    'volume': Var('Volume', 0.2, 0, 1, resolution=0.1),
-}
+    Var('octave', 4, 0, 6, resolution=1),
+    Var('attack', 0.05, 0, 0.5, resolution=0.001),
+    Var('decay', 0.1, 0, 0.5, resolution=0.001),
+    Var('release', 0.5, 0, 5, resolution=0.01),
+    Var('waveform', 1, 1, 4, resolution=1),
+    Var('harm', 0, 0, 4, resolution=0.01),
+    Var('mod-index', 0, 0, 10, resolution=0.1),
+    Var('master-volume', 0.2, 0, 1, resolution=0.1),
+)
 
-t = threading.Thread(target=play, args=(ins(ctl, 512), 512), daemon=True)
-t.start()
-
-gui(ctl, 600)
+gui.play(ins(gui.ctl, 512))

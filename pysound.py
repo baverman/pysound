@@ -67,10 +67,13 @@ class osc:
     def __call__(self, freq):
         return np.interp(self.phasor(freq), *self.table).astype(np.float32)
 
+    def reset(self, phase=0.0):
+        self.phasor.phase = phase
 
-def ensure_buf(value):
+
+def ensure_buf(value, dtype=np.float32):
     if type(value) in (int, float):
-        return np.full(BUFSIZE, value, dtype=np.float32)
+        return np.full(BUFSIZE, value, dtype=dtype)
     return value
 
 
@@ -83,6 +86,19 @@ def square():
 
 def noise():
     return np.random.rand(BUFSIZE).astype(np.float32) * 2.0 - 1.0
+
+
+def seed_noise(seed=None):
+    state = np.random.RandomState(seed)
+    def process():
+        return state.rand(BUFSIZE).astype(np.float32) * 2.0 - 1.0
+    return process
+
+def seed_noise2(seed=None):
+    state = np.random.RandomState(seed)
+    def process():
+        return (state.rand(BUFSIZE).astype(np.float32) > 0.5) * 2.0 - 1.0
+    return process
 
 
 def env_ahr(attack, hold, release, last=None):
@@ -133,6 +149,29 @@ class poly:
         return result
 
 
+class mono:
+    def __init__(self):
+        self.gen = None
+        self.last = 0.0
+
+    def set(self, gen):
+        self.gen = gen
+
+    def __call__(self):
+        sig = None
+        if self.gen:
+            data = next(self.gen, None)
+            if data is None:
+                self.gen = None
+            else:
+                sig, self.last = data
+
+        if sig is None:
+            sig = np.full(BUFSIZE, 0, dtype=np.float32)
+
+        return sig
+
+
 def fft_plot(signal, window=2048, crop=0):
     return np.fft.rfftfreq(window, 1/FREQ)[crop:], 2/window*np.abs(np.fft.rfft(signal, window))[crop:]
 
@@ -170,38 +209,88 @@ class GUI:
         return callback
 
     def play(self, gen, width=600):
-        t = threading.Thread(target=play, args=(self.ctl, gen), daemon=True)
+        t = threading.Thread(target=scream(play), args=(self.ctl, gen), daemon=True)
         t.start()
         show_window(self, width)
 
 
 class Var:
-    def __init__(self, name, value, min, max, resolution=1, label=None):
+    def __init__(self, name, value, min, max, resolution=1, label=None, hidden=False):
         self.name = name
         self.label = label or name.replace('-', ' ').title()
         self.val = value
         self.min = min
         self.max = max
         self.resolution = resolution
+        self.hidden = hidden
+
+
+class VarGroup:
+    def __init__(self, name, controls, label=None):
+        self.name = name
+        self.controls = controls
+        self.label = label or name.replace('-', ' ').title()
+        self.ctl = {it.name: it.val for it in controls}
+        self.val = self.ctl
+
+    def __iter__(self):
+        return iter(self.controls)
+
+    def command(self, control):
+        def callback(value):
+            self.ctl[control.name] = float(value)
+        return callback
 
 
 def show_window(controls, width):
     import tkinter as tk
+    from tkinter import ttk
     import keys
 
     controls.ctl['keys'] = []
     def kb(_):
         controls.ctl['keys'] = keys.keyboard_state()
+        print(controls.ctl['keys'])
 
     master = tk.Tk()
     master.bind('<KeyPress>', kb)
     master.bind('<KeyRelease>', kb)
 
-    for v in controls:
-        w = tk.Scale(master, label=v.label, from_=v.min, to=v.max, orient=tk.HORIZONTAL,
-                     length=width, command=controls.command(v), resolution=v.resolution)
-        w.set(v.val)
-        w.pack()
+    canvas = tk.Canvas(master, width=width+4)
+    scrollbar = ttk.Scrollbar(master, orient="vertical", command=canvas.yview)
+    scrollable_frame = ttk.Frame(canvas)
+
+    scrollable_frame.bind(
+        "<Configure>",
+        lambda e: canvas.configure(
+            scrollregion=canvas.bbox("all")
+        )
+    )
+
+    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+    canvas.configure(yscrollcommand=scrollbar.set)
+
+    notebook = None
+
+    def pack_controls(parent, controls):
+        nonlocal notebook
+        for v in controls:
+            if isinstance(v, VarGroup):
+                if notebook is None:
+                    notebook = ttk.Notebook(parent)
+                    notebook.pack()
+                nf = ttk.Frame(notebook)
+                notebook.add(nf, text=v.label)
+                pack_controls(nf, v)
+            else:
+                w = tk.Scale(parent, label=v.label, from_=v.min, to=v.max, orient=tk.HORIZONTAL,
+                             length=width, command=controls.command(v), resolution=v.resolution)
+                w.set(v.val)
+                w.pack()
+
+    pack_controls(scrollable_frame, controls)
+    canvas.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
 
     tk.mainloop()
     pprint.pprint(controls.ctl)
@@ -255,7 +344,6 @@ def delay(max_duration=0.5):
     return process
 
 
-@scream
 def play(ctl, gen):
     dsp = ossaudiodev.open('w')
     dsp.setparameters(ossaudiodev.AFMT_S16_LE, 1, 44100)
@@ -270,7 +358,7 @@ def play(ctl, gen):
                 break
             if np.max(np.abs(frame)) >= 1:
                 print('Distortion!!!')
-            dsp.write((frame * 32767).astype(np.int16))
+            dsp.write((np.clip(frame, -0.99, 0.99) * 32767).astype(np.int16))
             cnt += len(frame)
         else:
             time.sleep((cnt + BUFSIZE/2 - need_samples)/FREQ)

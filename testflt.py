@@ -2,77 +2,62 @@
 import numpy as np
 from scipy import signal
 import matplotlib.pyplot as plt
-from pysound import FREQ, square_unlim_t, osc, fft_plot, env_ahr, fps, dcfilter, sps, noise, lowpass, sin_t
-from pysound import cdcfilter, ffidcfilter
+import pysound as ps
+import cfilters
 from timeit_helper import timeit
 import cProfile
 
-def dcblock():
-    mean = 0
-    def do(sig):
-        nonlocal mean
-        newmean = np.mean(sig)
-        sig = sig - newmean
-        mean = newmean
-        return sig
-    return do
+o = ps.osc(ps.sin_t)
+env = ps.env_ahr(1, 30, 1)
+d = ps.delay()
 
-
-def delay(max_duration=0.5):
-    buf = np.full(sps(max_duration), 0, dtype=np.float32)
-    def process(sig, delay, feedback):
-        size = len(sig)
-        shift = sps(delay)
-        buf[:-size] = buf[size:]
-        buf[-size:] = sig * feedback
-        buf[-size:] += buf[-size-shift:-shift]
-        # plt.plot(buf[-size:].copy())
+def ndelay():
+    buf = np.full(ps.sps(0.5), 0, dtype=np.float32)
+    pos = 0
+    bsize = len(buf)
+    fflt = ps.lowpass()
+    def process(sig, delay, _):
+        nonlocal pos
+        result = sig.copy()
+        ds = ps.sps(delay)
+        for i in range(len(result)):
+            s = buf[(pos + i - ds) % bsize]
+            result[i] = sig[i] + s
+            buf[(pos+i) % bsize] = result[i]
+        # plt.plot(buf)
         # plt.show()
-        return buf[-size:].copy()
+        buf[pos:pos+len(result)] = fflt(result, 18000)
+        pos += len(result)
+        return result
     return process
 
 
-def delay_slow(max_duration=0.5):
-    buf = np.full(sps(max_duration), 0, dtype=np.float32)
-    def process(sig, delay, feedback):
-        size = len(sig)
-        shift = sps(delay)
-        buf[:-size] = buf[size:]
-        for i, v in enumerate(sig, len(buf)-size):
-            buf[i] = buf[i-shift] + v * feedback
-        return buf[-size:].copy()
+def boo_delay():
+    buf = cfilters.init_ring_buf(ps.sps(0.5))
+    fflt = ps.lowpass()
+    def process(sig, delay, _):
+        delays = ps.ensure_buf(ps.sps(delay), np.int32)
+        result = ps.ensure_buf(0)
+        cfilters.delmix(buf, result, sig, delays)
+        cfilters.delwrite(buf, fflt(result, 18000))
+        plt.plot(np.diff(result, 2))
+        plt.show()
+        return result
     return process
 
 
-o = osc(sin_t)
-env = env_ahr(0, 30, 0)
-d = delay_slow()
-f = lowpass()
-sig = np.concatenate([d(noise()*env(), 0.011, 0.99) for _ in range(fps(0.1))])
+d = ndelay()
+d = boo_delay()
+flt = ps.lowpass()
+n = ps.seed_noise(1)
+# plt.plot(n() * env())
+# plt.show()
 
-ss = sig[:512]
+sig = np.concatenate([flt(n(), 8000) * env() for _ in range(ps.fps(0.06))])
+dsig = np.concatenate([d(sig[i:i+512], 0.010, 1) for i in range(0, len(sig), 512)])
 
-flt1 = dcfilter()
-flt2 = cdcfilter()
-flt3 = ffidcfilter()
-
-# timeit('flt1(ss)')
-# timeit('flt2(ss)')
-# timeit('flt3(ss)')
-
-# def boo():
-#     for _ in range(100000):
-#         flt2(ss)
-#
-# from ctypes import addressof
-# cProfile.run("boo()", sort='tottime')
-
-# ss = o(440)
-#
-figure, axis = plt.subplots(3, 1)
-
-axis[0].plot(flt1(ss))
-axis[1].plot(flt3(ss))
-axis[2].plot(ss)
-
+# plt.plot(sig)
+# plt.plot(np.diff(dsig, 2))
+plt.plot(dsig)
 plt.show()
+
