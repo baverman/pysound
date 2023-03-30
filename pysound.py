@@ -6,9 +6,11 @@ import threading
 import wave
 import random
 import pprint
+import json
 
 import cfilters
 from cfilters import addr
+from glob import glob
 
 FREQ = 44100
 BUFSIZE = 512
@@ -197,9 +199,11 @@ def scream(fn):
 
 
 class GUI:
-    def __init__(self, *controls):
+    def __init__(self, *controls, preset_prefix=''):
         self.controls = controls
         self.ctl = {it.name: it.val for it in controls}
+        self.midi_channel = None
+        self.preset_prefix = preset_prefix
 
     def __iter__(self):
         return iter(self.controls)
@@ -216,7 +220,8 @@ class GUI:
 
 
 class Var:
-    def __init__(self, name, value, min, max, resolution=1, label=None, hidden=False):
+    def __init__(self, name, value, min, max, resolution=1, label=None,
+                 hidden=False, midi_ctrl=None, midi_channel=None):
         self.name = name
         self.label = label or name.replace('-', ' ').title()
         self.val = value
@@ -224,15 +229,18 @@ class Var:
         self.max = max
         self.resolution = resolution
         self.hidden = hidden
+        self.midi_ctrl = midi_ctrl
+        self.midi_channel = midi_channel
 
 
 class VarGroup:
-    def __init__(self, name, controls, label=None):
+    def __init__(self, name, controls, label=None, midi_channel=None):
         self.name = name
         self.controls = controls
         self.label = label or name.replace('-', ' ').title()
         self.ctl = {it.name: it.val for it in controls}
         self.val = self.ctl
+        self.midi_channel = midi_channel
 
     def __iter__(self):
         return iter(self.controls)
@@ -241,6 +249,22 @@ class VarGroup:
         def callback(value):
             self.ctl[control.name] = float(value)
         return callback
+
+
+def get_presets(prefix):
+    suffix = '.state.json'
+    return [it[len(prefix):-len(suffix)] for it in glob(f'{prefix}*{suffix}')]
+
+
+def update_state(cmap, dest, src):
+    for k, v in src.items():
+        if k not in dest:
+            continue
+        if type(v) is dict:
+            update_state(cmap[k], dest[k], v)
+        else:
+            dest[k] = v
+            cmap[k].set(v)
 
 
 def show_window(controls, width):
@@ -256,6 +280,37 @@ def show_window(controls, width):
     master = tk.Tk()
     master.bind('<KeyPress>', kb)
     master.bind('<KeyRelease>', kb)
+
+    def save_preset():
+        name = preset_cb.get().strip()
+        if not name:
+            return
+
+        state = controls.ctl.copy()
+        state.pop('keys', None)
+        with open(controls.preset_prefix + name + '.state.json', 'w') as fd:
+            fd.write(json.dumps(state))
+
+        values = sorted(set(list(preset_cb['values']) + [name]))
+        preset_cb['values'] = values
+
+    def load_preset(_e):
+        name = preset_cb.get().strip()
+        if not name:
+            return
+
+        with open(controls.preset_prefix + name + '.state.json') as fd:
+            data = json.load(fd)
+            update_state(ctrl_map, controls.ctl, data)
+
+    save_frame = ttk.Frame(master)
+    preset_cb = ttk.Combobox(save_frame, values=sorted(get_presets(controls.preset_prefix)))
+    preset_cb.bind('<<ComboboxSelected>>', load_preset)
+    preset_cb.pack(side='left')
+    ttk.Label(save_frame, text=" ").pack(side='left')
+    save_button = ttk.Button(save_frame, text="Save", command=save_preset)
+    save_button.pack(side='left')
+    save_frame.pack(anchor='e')
 
     canvas = tk.Canvas(master, width=width+4)
     scrollbar = ttk.Scrollbar(master, orient="vertical", command=canvas.yview)
@@ -274,26 +329,28 @@ def show_window(controls, width):
     notebook = None
     midi_ctrl_map = {}
     midi_ctrl = None
+    ctrl_map = {}
 
     def get_label(w):
-        if w.pysound_param is not None:
-            return f'{w.orig_label} ctrl:{w.pysound_param}'
+        if w.midi_ctrl is not None:
+            return f'{w.orig_label} ch:{w.midi_channel} ctrl:{w.midi_ctrl}'
         else:
             return w.orig_label
 
     def midi_cb(etype, value):
-        print(etype, value)
         nonlocal midi_ctrl
         if etype == 2:
             ch, param, v = value
+            key = (ch, param)
             if midi_ctrl is not None:
-                midi_ctrl.pysound_param = param
-                midi_ctrl_map[param] = midi_ctrl
+                midi_ctrl.midi_channel = ch
+                midi_ctrl.midi_ctrl = param
+                midi_ctrl_map[key] = midi_ctrl
                 midi_ctrl['label'] = get_label(midi_ctrl)
-            elif param in midi_ctrl_map:
-                w = midi_ctrl_map[param]
+            elif key in midi_ctrl_map:
+                w = midi_ctrl_map[(ch, param)]
                 value = w['from'] + (w['to'] - w['from']) * v / 127
-                # w.pysound_set_cb(value)
+                w.pysound_set_cb(value)
                 w.set(value)
 
     def set_midi_ctrl(e):
@@ -306,7 +363,7 @@ def show_window(controls, width):
         midi_ctrl = None
         e.widget['label'] = get_label(e.widget)
 
-    def pack_controls(parent, controls):
+    def pack_controls(parent, controls, cmap):
         nonlocal notebook
         for v in controls:
             if isinstance(v, VarGroup):
@@ -315,22 +372,28 @@ def show_window(controls, width):
                     notebook.pack()
                 nf = ttk.Frame(notebook)
                 notebook.add(nf, text=v.label)
-                pack_controls(nf, v)
+                pack_controls(nf, v, cmap.setdefault(v.name, {}))
             else:
                 set_cb = controls.command(v)
                 w = tk.Scale(parent, label=v.label, from_=v.min, to=v.max, orient=tk.HORIZONTAL,
                              length=width, command=set_cb, resolution=v.resolution)
+                cmap[v.name] = w
                 w.orig_label = v.label
-                w.pysound_param = None
+                w.midi_channel = v.midi_channel or controls.midi_channel
+                w.midi_ctrl = v.midi_ctrl
+                if w.midi_ctrl is not None:
+                    midi_ctrl_map[(w.midi_channel, w.midi_ctrl)] = w
+                w['label'] = get_label(w)
                 w.pysound_set_cb = set_cb
                 w.bind('<ButtonPress-3>', set_midi_ctrl)
                 w.bind('<ButtonRelease-3>', release_midi_ctrl)
                 w.set(v.val)
                 w.pack()
 
-    pack_controls(scrollable_frame, controls)
+    pack_controls(scrollable_frame, controls, ctrl_map)
     canvas.pack(side="left", fill="both", expand=True)
     scrollbar.pack(side="right", fill="y")
+
 
     source = os.environ.get('MIDI_SOURCE')
     if source:
@@ -339,7 +402,7 @@ def show_window(controls, width):
         t.start()
 
     tk.mainloop()
-    pprint.pprint(controls.ctl)
+    # pprint.pprint(controls.ctl)
 
 
 def fps(duration=1):

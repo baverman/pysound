@@ -4,4 +4,5 @@
 *.o
 _cfilters.*
 *.txt
+*.state.json
 

@@ -6,24 +6,25 @@ from tonator import Scales
 import itertools
 
 svars = [
-    Var('vol', 0.5, 0, 1, resolution=0.01),
+    Var('vol', 0.5, 0, 1, resolution=0.01, midi_ctrl=0),
     Var('attack', 8, 1, 100),
     Var('hold', 100, 1, 1000),
     Var('release', 500, 1, 2000),
     Var('filter-on', 1, 0, 1),
     Var('filter-attack', 5, 1, 100),
-    Var('filter-hold', 1, 1, 1000),
+    Var('filter-hold', 1, 1, 1000, midi_ctrl=1),
     Var('filter-release', 260, 1, 2000),
-    Var('filter-cutoff', 15000, 100, 20000),
-    Var('filter-resonance', 0.7, 0, 1, resolution=0.01),
+    Var('filter-cutoff', 15000, 100, 20000, midi_ctrl=2),
+    Var('filter-resonance', 0.7, 0, 1, resolution=0.01, midi_ctrl=3),
 ]
 
 gui = GUI(
     Var('tempo', 320, 50, 600),
-    VarGroup('voice-1', svars),
-    VarGroup('voice-2', svars),
-    VarGroup('voice-3', svars),
+    VarGroup('voice-1', svars, midi_channel=0),
+    VarGroup('voice-2', svars, midi_channel=1),
+    VarGroup('voice-3', svars, midi_channel=2),
     Var('master-volume', 0.2, 0, 1, resolution=0.01),
+    preset_prefix='acid-',
 )
 
 
