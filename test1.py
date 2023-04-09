@@ -1,9 +1,7 @@
 #padsp python
-import itertools
-
 from pysound import (
-    GUI, Var, mtof, lowpass, phasor, fps, env_ahr, VarGroup,
-    env_adsr, Trigger, BUFSIZE, FREQ, poly)
+    GUI, Var, lowpass, phasor, env_ahr, VarGroup,
+    env_adsr, BUFSIZE, FREQ, poly, Player)
 
 import tonator
 import tntparser
@@ -24,10 +22,10 @@ svars = [
 gui = GUI(
     Var('tempo', 320, 50, 600),
     VarGroup('voice-1', svars, midi_channel=0),
-    # VarGroup('voice-2', svars, midi_channel=1),
+    VarGroup('voice-2', svars, midi_channel=1),
     # VarGroup('voice-3', svars, midi_channel=2),
     Var('master-volume', 0.2, 0, 1, resolution=0.01),
-    preset_prefix='acid-',
+    preset_prefix='test1-',
 )
 
 
@@ -44,29 +42,34 @@ def synth(ctl, trig, f, note_vol):
         yield sig * line()**4 * ctl['vol'] * note_vol
 
 
+def play_event_adapter(player, etype, evalue):
+    if etype == tntparser.NOTE_ON:
+        ch, (o, offset), volume = evalue
+        note = 12 + o*12 + offset
+        player.note_on(ch, note, volume / 100)
+    elif etype == tntparser.NOTE_OFF:
+        ch, (o, offset), _ = evalue
+        note = 12 + o*12 + offset
+        player.note_off(ch, note)
+
+
 def gen(ctl):
-    n1 = tntparser.make_events("o=2 amul=2 !7b 2 !6 | 2 !5 2 !4 3b !2")
-    notes = tntparser.mix_events([n1])
+    n1 = tntparser.make_events("c=0 o=2 amul=2  !7b 2 !6 2 !5 2 !4  3b !2")
+    n2 = tntparser.make_events("c=1 o=3 amul=2  4   -  4 -  4 -  7b -   6")
+    notes = tntparser.mix_events([n1, n2])
     taker = tntparser.take_until(notes.loop())
+
+    p = poly()
+    player = Player(ctl, p)
+    player.set_voice(0, 'voice-1', synth)
+    player.set_voice(1, 'voice-2', synth)
+    player.set_voice(2, 'voice-3', synth)
 
     pos = tntparser.F(0)
     tmul = tntparser.F(FREQ) / BUFSIZE * 60 * 4
-    p = poly()
-    triggers = {}
     while taker.running or p:
         for _, etype, evalue in taker(pos):
-            if etype == tntparser.NOTE_ON:
-                ch, (o, offset), volume = evalue
-                note = 12 + o*12 + offset
-                if note in triggers:
-                    triggers[note].set(False)
-                t = triggers[note] = Trigger()
-                p.add(synth(ctl['voice-1'], t, mtof(note), volume / 100))
-            elif etype == tntparser.NOTE_OFF:
-                ch, (o, offset), volume = evalue
-                note = 12 + o*12 + offset
-                if note in triggers:
-                    triggers[note].set(False)
+            play_event_adapter(player, etype, evalue)
 
         yield p()
         pos += int(ctl['tempo']) / tmul

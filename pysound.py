@@ -214,6 +214,29 @@ class poly:
         return result
 
 
+class Player:
+    def __init__(self, ctl, poly):
+        self.poly = poly
+        self.ctl = ctl
+        self.triggers = {}
+        self.channels = {}
+
+    def set_voice(self, channel, ctl_name, fn):
+        self.channels[channel] = ctl_name, fn
+
+    def note_on(self, channel, midi_note, volume):
+        key = channel, midi_note
+        self.note_off(channel, midi_note)
+        t = self.triggers[key] = Trigger()
+        ctl_name, fn = self.channels[channel]
+        self.poly.add(fn(self.ctl[ctl_name], t, mtof(midi_note), volume))
+
+    def note_off(self, channel, midi_note):
+        key = channel, midi_note
+        if key in self.triggers:
+            self.triggers[key].set(False)
+
+
 class mono:
     def __init__(self):
         self.gen = None
@@ -303,6 +326,7 @@ class GUI:
         t.start()
 
         master.tk.mainloop()
+        master.pysound_exit()
         stop.set()
         t.join()
 
@@ -372,8 +396,9 @@ def create_window(controls, width):
     master.bind('<KeyPress>', kb)
     master.bind('<KeyRelease>', kb)
 
-    def save_preset():
-        name = preset_cb.get().strip()
+    def save_preset(name=None):
+        explicit_name = name is not None
+        name = name or preset_cb.get().strip()
         if not name:
             return
 
@@ -382,11 +407,12 @@ def create_window(controls, width):
         with open(controls.preset_prefix + name + '.state.json', 'w') as fd:
             fd.write(json.dumps(state))
 
-        values = sorted(set(list(preset_cb['values']) + [name]))
-        preset_cb['values'] = values
+        if not explicit_name:
+            values = sorted(set(list(preset_cb['values']) + [name]))
+            preset_cb['values'] = values
 
-    def load_preset(_e):
-        name = preset_cb.get().strip()
+    def load_preset(_e, name=None):
+        name = name or preset_cb.get().strip()
         if not name:
             return
 
@@ -396,14 +422,14 @@ def create_window(controls, width):
 
     save_frame = ttk.Frame(master)
 
-    save_button = ttk.Button(save_frame, text="Save", command=save_preset)
-    save_button.pack(side='right')
-
-    ttk.Label(save_frame, text=" ").pack(side='right')
-
     preset_cb = ttk.Combobox(save_frame, values=sorted(get_presets(controls.preset_prefix)))
     preset_cb.bind('<<ComboboxSelected>>', load_preset)
     preset_cb.pack(side='right')
+
+    ttk.Label(save_frame, text=" ").pack(side='right')
+
+    save_button = ttk.Button(save_frame, text="Save", command=save_preset)
+    save_button.pack(side='right')
 
     dist_w = ttk.Label(save_frame, text="d.frames: 0")
     dist_w.pack(side='left')
@@ -512,6 +538,9 @@ def create_window(controls, width):
     if controls.args.preset:
         preset_cb.set(controls.args.preset)
         load_preset(None)
+    else:
+        if 'tmp' in preset_cb['values']:
+            load_preset(None, 'tmp')
 
     source = os.environ.get('MIDI_SOURCE')
     if source:
@@ -519,6 +548,10 @@ def create_window(controls, width):
         t = threading.Thread(target=asound.listen, args=(source, midi_cb), daemon=True)
         t.start()
 
+    def exit():
+        save_preset('tmp')
+
+    master.pysound_exit = exit
     return master
 
 
