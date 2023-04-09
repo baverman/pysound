@@ -10,13 +10,14 @@ import random
 import pprint
 import json
 import math
+import collections
 
 import cfilters
 from cfilters import addr
 from glob import glob
 
 FREQ = 44100
-BUFSIZE = 512
+BUFSIZE = 128
 
 tau = np.pi * 2
 
@@ -387,7 +388,10 @@ def create_window(controls, width):
     from tkinter import ttk
     import keys
 
+
+    internal_ctl_keys = 'keys', 'midi_notes'
     controls.ctl['keys'] = []
+    controls.ctl['midi_notes'] = collections.deque()
     def kb(_):
         controls.ctl['keys'] = keys.keyboard_state()
         print(controls.ctl['keys'])
@@ -403,7 +407,9 @@ def create_window(controls, width):
             return
 
         state = controls.ctl.copy()
-        state.pop('keys', None)
+        for k in internal_ctl_keys:
+            state.pop(k, None)
+
         with open(controls.preset_prefix + name + '.state.json', 'w') as fd:
             fd.write(json.dumps(state))
 
@@ -469,7 +475,9 @@ def create_window(controls, width):
 
     def midi_cb(etype, value):
         nonlocal midi_ctrl
-        if etype == 2:
+        if etype in (0, 1):
+            controls.ctl['midi_notes'].append((etype, value))
+        elif etype == 2:
             ch, param, v = value
             key = (ch, param)
             if midi_ctrl is not None:

@@ -53,7 +53,7 @@ def listen(source, cb):
         t = ev[0].type
         if t in onoff:
             e = ev[0].data.note
-            cb(onoff.index(t), (e.channel, e.note))
+            cb(onoff.index(t), (e.channel, e.note, e.velocity))
         elif t == lib.SND_SEQ_EVENT_CONTROLLER:
             e = ev[0].data.control
             cb(2, (e.channel, e.param, e.value))

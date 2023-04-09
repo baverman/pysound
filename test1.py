@@ -1,4 +1,4 @@
-#padsp python
+#MIDI_SOURCE=16:0 padsp python
 from pysound import (
     GUI, Var, lowpass, phasor, env_ahr, VarGroup,
     env_adsr, BUFSIZE, FREQ, poly, Player)
@@ -13,7 +13,7 @@ svars = [
     Var('release', 500, 1, 2000),
     Var('filter-on', 1, 0, 1),
     Var('filter-attack', 5, 1, 100),
-    Var('filter-hold', 1, 1, 500, midi_ctrl=1),
+    Var('filter-sustain', 1, 0, 1, resolution=0.01, midi_ctrl=1),
     Var('filter-release', 260, 1, 2000),
     Var('filter-cutoff', 15000, 100, 20000, midi_ctrl=2),
     Var('filter-resonance', 0.7, 0.5, 1, resolution=0.001, midi_ctrl=3),
@@ -32,13 +32,14 @@ gui = GUI(
 def synth(ctl, trig, f, note_vol):
     o = phasor()
     line = env_adsr(trig, ctl['attack'], ctl['attack'], ctl['sustain'], ctl['release'])
-    fline = env_ahr(ctl['filter-attack'], ctl['filter-hold'], ctl['filter-release'])
+    fline = env_adsr(trig, ctl['filter-attack'], ctl['filter-attack'], ctl['filter-sustain'], ctl['filter-release'])
     lp = lowpass()
     while line.running:
         sig = o(f)
-        lp_sig = lp(sig, fline()**4 * ctl['filter-cutoff'], ctl['filter-resonance'])
         if ctl['filter-on'] > 0:
-            sig = lp_sig
+            sig = lp(sig, fline()**4 * ctl['filter-cutoff'], ctl['filter-resonance'])
+        else:
+            sig = lp(sig, ctl['filter-cutoff'], ctl['filter-resonance'])
         yield sig * line()**4 * ctl['vol'] * note_vol
 
 
@@ -55,8 +56,8 @@ def play_event_adapter(player, etype, evalue):
 
 def gen(ctl):
     n1 = tntparser.make_events("c=0 o=2 amul=2  !7b 2 !6 2 !5 2 !4  3b !2")
-    n2 = tntparser.make_events("c=1 o=3 amul=2  4   -  4 -  4 -  7b -   6")
-    notes = tntparser.mix_events([n1, n2])
+    # n2 = tntparser.make_events("c=1 o=3 amul=2  4   -  4 -  4 -  7b -   6")
+    notes = tntparser.mix_events([n1])
     taker = tntparser.take_until(notes.loop())
 
     p = poly()
@@ -67,9 +68,16 @@ def gen(ctl):
 
     pos = tntparser.F(0)
     tmul = tntparser.F(FREQ) / BUFSIZE * 60 * 4
-    while taker.running or p:
+    while taker.running or p or True:
         for _, etype, evalue in taker(pos):
             play_event_adapter(player, etype, evalue)
+
+        while ctl['midi_notes']:
+            etype, (ch, note, velocity) = ctl['midi_notes'].popleft()
+            if etype == 0:
+                player.note_off(ch, note)
+            elif etype == 1:
+                player.note_on(ch, note, velocity / 127)
 
         yield p()
         pos += int(ctl['tempo']) / tmul
