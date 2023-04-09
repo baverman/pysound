@@ -136,6 +136,7 @@ class Scale:
 class Scales:
     major = ionian = Scale.make('1 2 3 4 5 6 7')
     minor = aeolian = Scale.make('1 2 ♭3 4 5 ♭6 ♭7')
+    harmonic_minor = Scale.make('1 2 ♭3 4 5 ♭6 7')
     dorian = Scale.make('1 2 ♭3 4 5 6 ♭7')
     locrian = Scale.make('1 ♭2 ♭3 4 ♭5 ♭6 ♭7')
     lydian = Scale.make('1 2 3 ♯4 5 6 7')

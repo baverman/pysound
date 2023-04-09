@@ -1,3 +1,5 @@
+import sys
+import argparse
 import os
 import time
 import numpy as np
@@ -7,6 +9,7 @@ import wave
 import random
 import pprint
 import json
+import math
 
 import cfilters
 from cfilters import addr
@@ -97,6 +100,7 @@ def seed_noise(seed=None):
         return state.rand(BUFSIZE).astype(np.float32) * 2.0 - 1.0
     return process
 
+
 def seed_noise2(seed=None):
     state = np.random.RandomState(seed)
     def process():
@@ -132,12 +136,70 @@ def env_ahr(attack, hold, release, last=None):
     return gen
 
 
+class Trigger:
+    def __init__(self, value=True):
+        self._value = value
+
+    def __bool__(self):
+        return self._value
+
+    def set(self, value):
+        self._value = value
+
+
+def env_adsr(trig, attack, decay, sustain, release, last=None):
+    last = last or 0
+    acnt = sps(attack / 1000)
+    dcnt = sps(decay / 1000)
+    rcnt = sps(release / 1000)
+
+    ae = np.concatenate([
+        np.linspace(last, 1, acnt, endpoint=False, dtype=np.float32),
+        np.linspace(1, sustain, dcnt, endpoint=False, dtype=np.float32),
+        np.full(BUFSIZE, sustain, dtype=np.float32),
+    ])
+
+    re = np.concatenate([
+        np.linspace(sustain, 0, rcnt, dtype=np.float32),
+        np.full(BUFSIZE, 0, dtype=np.float32),
+    ])
+
+    samples = 0
+    state = 1
+    def gen():
+        nonlocal samples, state
+        if state == 1:
+            if samples < acnt + dcnt:
+                result = ae[samples:samples+BUFSIZE]
+            else:
+                result = ae[-BUFSIZE:]
+                if not trig:
+                    state = 2
+                    samples = -BUFSIZE
+        elif state == 2:
+            if samples < rcnt:
+                result = re[samples:samples+BUFSIZE]
+            else:
+                result = re[-BUFSIZE:]
+                gen.running = False
+
+        samples += BUFSIZE
+        gen.last = result[-1]
+        return result
+
+    gen.running = True
+    return gen
+
+
 class poly:
     def __init__(self):
         self.gens = set()
 
     def add(self, gen):
         self.gens.add(gen)
+
+    def __len__(self):
+        return len(self.gens)
 
     def __call__(self):
         toremove = []
@@ -179,11 +241,11 @@ def fft_plot(signal, window=2048, crop=0):
     return np.fft.rfftfreq(window, 1/FREQ)[crop:], 2/window*np.abs(np.fft.rfft(signal, window))[crop:]
 
 
-def open_wav_f32(fname):
-    wave.WAVE_FORMAT_PCM = 3  # float
+def open_wav(fname, fmt=3):
+    wave.WAVE_FORMAT_PCM = fmt  # float
     f = wave.open(fname, 'wb')
     f.setnchannels(1)
-    f.setsampwidth(4)
+    f.setsampwidth(4 if fmt==3 else 2)
     f.setframerate(FREQ)
     return f
 
@@ -204,6 +266,9 @@ class GUI:
         self.ctl = {it.name: it.val for it in controls}
         self.midi_channel = None
         self.preset_prefix = preset_prefix
+        self.update_dist = None
+        self.dist_counter = 0
+        self.args = None
 
     def __iter__(self):
         return iter(self.controls)
@@ -213,10 +278,36 @@ class GUI:
             self.ctl[control.name] = float(value)
         return callback
 
+    def dist_cb(self):
+        self.dist_counter += 1
+        if self.update_dist:
+            self.update_dist(self.dist_counter)
+
     def play(self, gen, width=600):
-        t = threading.Thread(target=scream(play), args=(self.ctl, gen), daemon=True)
+        parser = argparse.ArgumentParser()
+        parser.add_argument('-p', '--preset')
+        parser.add_argument('-o', '--output')
+        self.args, _ = parser.parse_known_args()
+
+        master = create_window(self, width)
+        if self.args.output:
+            wavfile = open_wav(self.args.output, 1)
+        else:
+            wavfile = None
+
+        stop = threading.Event()
+        t = threading.Thread(target=scream(play),
+                             args=(self.ctl, gen, self.dist_cb),
+                             kwargs={'stop': stop, 'wavfile': wavfile},
+                             daemon=True)
         t.start()
-        show_window(self, width)
+
+        master.tk.mainloop()
+        stop.set()
+        t.join()
+
+        if wavfile:
+            wavfile.close()
 
 
 class Var:
@@ -267,7 +358,7 @@ def update_state(cmap, dest, src):
             cmap[k].set(v)
 
 
-def show_window(controls, width):
+def create_window(controls, width):
     import tkinter as tk
     from tkinter import ttk
     import keys
@@ -304,15 +395,25 @@ def show_window(controls, width):
             update_state(ctrl_map, controls.ctl, data)
 
     save_frame = ttk.Frame(master)
+
+    save_button = ttk.Button(save_frame, text="Save", command=save_preset)
+    save_button.pack(side='right')
+
+    ttk.Label(save_frame, text=" ").pack(side='right')
+
     preset_cb = ttk.Combobox(save_frame, values=sorted(get_presets(controls.preset_prefix)))
     preset_cb.bind('<<ComboboxSelected>>', load_preset)
-    preset_cb.pack(side='left')
-    ttk.Label(save_frame, text=" ").pack(side='left')
-    save_button = ttk.Button(save_frame, text="Save", command=save_preset)
-    save_button.pack(side='left')
-    save_frame.pack(anchor='e')
+    preset_cb.pack(side='right')
 
-    canvas = tk.Canvas(master, width=width+4)
+    dist_w = ttk.Label(save_frame, text="d.frames: 0")
+    dist_w.pack(side='left')
+    def update_dist(value):
+        dist_w['text'] = f'd.frames: {value}'
+    controls.update_dist = update_dist
+
+    save_frame.pack(fill='x')
+
+    canvas = tk.Canvas(master)
     scrollbar = ttk.Scrollbar(master, orient="vertical", command=canvas.yview)
     scrollable_frame = ttk.Frame(canvas)
 
@@ -333,7 +434,10 @@ def show_window(controls, width):
 
     def get_label(w):
         if w.midi_ctrl is not None:
-            return f'{w.orig_label} ch:{w.midi_channel} ctrl:{w.midi_ctrl}'
+            if w.midi_wait_value is not None:
+                return f'{w.orig_label} ch:{w.midi_channel} ctrl:{w.midi_ctrl} val:{round(w.midi_wait_value, w.round)}'
+            else:
+                return f'{w.orig_label} ch:{w.midi_channel} ctrl:{w.midi_ctrl}'
         else:
             return w.orig_label
 
@@ -350,8 +454,13 @@ def show_window(controls, width):
             elif key in midi_ctrl_map:
                 w = midi_ctrl_map[(ch, param)]
                 value = w['from'] + (w['to'] - w['from']) * v / 127
-                w.pysound_set_cb(value)
-                w.set(value)
+                if abs(value - w.get()) / (w['to'] - w['from']) > 0.03:
+                    w.midi_wait_value = value
+                else:
+                    w.midi_wait_value = None
+                    w.pysound_set_cb(value)
+                    w.set(value)
+                w['label'] = get_label(w)
 
     def set_midi_ctrl(e):
         nonlocal midi_ctrl
@@ -381,6 +490,8 @@ def show_window(controls, width):
                 w.orig_label = v.label
                 w.midi_channel = v.midi_channel or controls.midi_channel
                 w.midi_ctrl = v.midi_ctrl
+                w.midi_wait_value = None
+                w.round = int(math.log10(int(1/v.resolution)))
                 if w.midi_ctrl is not None:
                     midi_ctrl_map[(w.midi_channel, w.midi_ctrl)] = w
                 w['label'] = get_label(w)
@@ -394,6 +505,13 @@ def show_window(controls, width):
     canvas.pack(side="left", fill="both", expand=True)
     scrollbar.pack(side="right", fill="y")
 
+    master.update()
+    canvas['width'] = scrollable_frame.winfo_reqwidth()
+    canvas['height'] = min(900, scrollable_frame.winfo_reqheight())
+
+    if controls.args.preset:
+        preset_cb.set(controls.args.preset)
+        load_preset(None)
 
     source = os.environ.get('MIDI_SOURCE')
     if source:
@@ -401,8 +519,7 @@ def show_window(controls, width):
         t = threading.Thread(target=asound.listen, args=(source, midi_cb), daemon=True)
         t.start()
 
-    tk.mainloop()
-    # pprint.pprint(controls.ctl)
+    return master
 
 
 def fps(duration=1):
@@ -453,29 +570,39 @@ def delay(max_duration=0.5):
     return process
 
 
-def play(ctl, gen):
+def play(ctl, gen, dist_cb=None, wavfile=None, stop=None):
     dsp = ossaudiodev.open('w')
     dsp.setparameters(ossaudiodev.AFMT_S16_LE, 1, 44100)
     cnt = 0
     start = time.time()
-    while True:
+    while not stop or not stop.is_set():
         now = time.time()
         need_samples = (now - start) * FREQ + BUFSIZE
         if cnt <= need_samples:
-            frame = next(gen, None) * ctl['master-volume']
+            frame = next(gen, None)
             if frame is None:
                 break
+
+            frame *= ctl['master-volume']
             if np.max(np.abs(frame)) >= 1:
-                print('Distortion!!!')
-            dsp.write((np.clip(frame, -0.99, 0.99) * 32767).astype(np.int16))
+                if dist_cb:
+                    dist_cb()
+                else:
+                    print('Distortion!!!')
+
+            frame = (np.clip(frame, -0.99, 0.99) * 32767).astype(np.int16)
+            dsp.write(frame)
+            if wavfile:
+                wavfile.writeframesraw(frame)
             cnt += len(frame)
         else:
             time.sleep((cnt + BUFSIZE/2 - need_samples)/FREQ)
     dsp.sync()
+    dsp.close()
 
 
 def render_to_file(fname, ctl, gen, duration):
-    with open_wav_f32(fname) as f:
+    with open_wav(fname) as f:
         for _ in range(fps(duration)):
             frame = next(gen, None) * ctl['master-volume']
             if frame is None:

@@ -12,10 +12,10 @@ svars = [
     Var('release', 500, 1, 2000),
     Var('filter-on', 1, 0, 1),
     Var('filter-attack', 5, 1, 100),
-    Var('filter-hold', 1, 1, 1000, midi_ctrl=1),
+    Var('filter-hold', 1, 1, 500, midi_ctrl=1),
     Var('filter-release', 260, 1, 2000),
     Var('filter-cutoff', 15000, 100, 20000, midi_ctrl=2),
-    Var('filter-resonance', 0.7, 0, 1, resolution=0.01, midi_ctrl=3),
+    Var('filter-resonance', 0.7, 0.5, 1, resolution=0.001, midi_ctrl=3),
 ]
 
 gui = GUI(
