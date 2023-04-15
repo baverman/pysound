@@ -230,7 +230,9 @@ class poly_adsr:
 
     def remove(self, key):
         if key in self.gens:
-            self.gens[key][-1].set(False)
+            v = self.gens.pop(key)
+            v[-1].set(False)
+            self.gens[v[1]] = v
 
     def __len__(self):
         return len(self.gens)
@@ -239,14 +241,16 @@ class poly_adsr:
         toremove = []
         if result is None:
             result = np.full(BUFSIZE, 0, dtype=np.float32)
+
         for key, (p, g, e, _t) in self.gens.items():
             data = next(g, None)
-            if data is None or not e.running:
-                toremove.append(key)
-            else:
+            if data is not None:
                 if self.flt:
                     data = self.flt(self.ctl, p, data)
-                result += data * e() ** 4 * p['volume'] * self.ctl.get('volume', 1.0)
+                result += data * (e() ** 4) * p['volume'] * self.ctl.get('volume', 1.0)
+
+            if data is None or not e.running:
+                toremove.append(key)
 
         for it in toremove:
             self.gens.pop(it)
@@ -382,15 +386,16 @@ class GUI:
         if self.update_dist:
             self.update_dist(self.dist_counter)
 
-    def play(self, gen, width=600):
+    def play(self, gen, width=600, output=None):
         parser = argparse.ArgumentParser()
         parser.add_argument('-p', '--preset')
         parser.add_argument('-o', '--output')
         self.args, _ = parser.parse_known_args()
 
         master = create_window(self, width)
-        if self.args.output:
-            wavfile = open_wav(self.args.output, 1)
+        output = output or self.args.output
+        if output:
+            wavfile = open_wav(output, 1)
         else:
             wavfile = None
 
@@ -701,13 +706,13 @@ def play(ctl, gen, dist_cb=None, wavfile=None, stop=None):
             if frame is None:
                 break
 
-            do_pafter = False
-            if np.max(np.abs(frame)) > 0.001 and not printed:
-                do_pafter = True
-                printed = True
-                print('@@@', time.time())
-            elif np.max(np.abs(frame)) < 0.001 and printed:
-                printed = False
+            # do_pafter = False
+            # if np.max(np.abs(frame)) > 0.001 and not printed:
+            #     do_pafter = True
+            #     printed = True
+            #     print('@@@', time.time())
+            # elif np.max(np.abs(frame)) < 0.001 and printed:
+            #     printed = False
 
             frame *= ctl['master-volume']
             if np.max(np.abs(frame)) >= 1:
@@ -718,8 +723,8 @@ def play(ctl, gen, dist_cb=None, wavfile=None, stop=None):
 
             frame = (np.clip(frame, -0.99, 0.99) * 32767).astype(np.int16)
             dsp.write(frame)
-            if do_pafter:
-                print('@@@@', time.time())
+            # if do_pafter:
+            #     print('@@@@', time.time())
             if wavfile:
                 wavfile.writeframesraw(frame)
             cnt += len(frame)
