@@ -1,4 +1,4 @@
-#MIDI_SOURCE=16:0 padsp python
+#MIDI_SOURCE=16:0 python
 from pysound import (
     GUI, Var, lowpass, phasor, env_ahr, VarGroup,
     BUFSIZE, FREQ, poly_adsr, Player, midi_player, kbd_player)
@@ -46,20 +46,20 @@ def synth(ctl, params):
 def gen(ctl):
     me = tntparser.make_events
     notes = tntparser.mix_events([
-        me("c=0 o=2 amul=2 k=Cm !7b 2 !6 2 !5 2 !4  3b !2"),
+        me("c=0 o=2 amul=2 k=C !7b 2 !6 2 !5 2 !4  3b !2"),
         # me("c=1 o=3 amul=2  4   -  4 -  4 -  7b -   6")
     ])
     taker = tntparser.take_until(notes.loop())
 
     player = Player()
     player.set_voice(0, poly_adsr(ctl['voice-1'], synth))
-    # player.set_voice(1, poly_adsr(ctl['voice-2'], synth))
+    player.set_voice(1, poly_adsr(ctl['voice-2'], synth))
 
     seq = tntparser.player_event_adapter(FREQ, BUFSIZE)
     kp = kbd_player(channel=1)
     while True:
-        # midi_player(ctl, player)
-        # kp(ctl, player)
+        midi_player(ctl, player)
+        kp(ctl, player)
         seq(player, taker, ctl['tempo'])
         yield player()
 

@@ -2,8 +2,6 @@ import sys
 import argparse
 import os
 import time
-import numpy as np
-import ossaudiodev
 import threading
 import wave
 import random
@@ -13,12 +11,18 @@ import math
 import collections
 import functools
 
+from glob import glob
+from ctypes import byref, memmove, c_void_p
+
+import sdl2
+import numpy as np
+
 import cfilters
 from cfilters import addr
-from glob import glob
+
 
 FREQ = 44100
-BUFSIZE = 128
+BUFSIZE = 256
 
 tau = np.pi * 2
 
@@ -307,15 +311,15 @@ def kbd_player(channel=0, octave=4, volume=1.0):
 
     def step(ctl, player):
         nonlocal state
+        old_state = set(state)
         pressed = set(it for it in ctl.get('keys', []) if it in keys.KEYNOTES)
+        state = pressed
 
-        for key in state - pressed:
+        for key in old_state - pressed:
             player.note_off(channel, 12*octave + keys.KEYNOTES[key])
 
-        for key in pressed - state:
+        for key in pressed - old_state:
             player.note_on(channel, 12*octave + keys.KEYNOTES[key], volume)
-
-        state = pressed
 
     return step
 
@@ -696,45 +700,41 @@ def delay(max_duration=0.5):
 
 
 def play(ctl, gen, dist_cb=None, wavfile=None, stop=None):
-    dsp = ossaudiodev.open('w')
-    dsp.setparameters(ossaudiodev.AFMT_S16_LE, 1, 44100)
-    cnt = 0
-    start = time.time()
-    printed = False
-    while not stop or not stop.is_set():
-        now = time.time()
-        need_samples = (now - start) * FREQ + BUFSIZE
-        if cnt <= need_samples:
-            frame = next(gen, None)
-            if frame is None:
-                break
+    def handle_sound(_userdata, stream, length):
+        frame = next(gen)
 
-            # do_pafter = False
-            # if np.max(np.abs(frame)) > 0.001 and not printed:
-            #     do_pafter = True
-            #     printed = True
-            #     print('@@@', time.time())
-            # elif np.max(np.abs(frame)) < 0.001 and printed:
-            #     printed = False
+        frame *= ctl['master-volume']
+        if np.max(np.abs(frame)) >= 1:
+            if dist_cb:
+                dist_cb()
+            else:
+                print('Distortion!!!')
 
-            frame *= ctl['master-volume']
-            if np.max(np.abs(frame)) >= 1:
-                if dist_cb:
-                    dist_cb()
-                else:
-                    print('Distortion!!!')
+        frame[frame > 0.99] = 0.99
+        frame[frame < -0.99] = -0.99
+        frame = (frame * 32767).astype(np.int16)
 
-            frame = (np.clip(frame, -0.99, 0.99) * 32767).astype(np.int16)
-            dsp.write(frame)
-            # if do_pafter:
-            #     print('@@@@', time.time())
-            if wavfile:
-                wavfile.writeframesraw(frame)
-            cnt += len(frame)
-        else:
-            time.sleep((cnt + BUFSIZE/2 - need_samples)/FREQ)
-    dsp.sync()
-    dsp.close()
+        memmove(stream, frame.ctypes.data, length)
+
+        if wavfile:
+            wavfile.writeframesraw(frame)
+
+    sdl2.SDL_Init(sdl2.SDL_INIT_AUDIO)
+    spec = sdl2.SDL_AudioSpec(FREQ, sdl2.AUDIO_S16LSB, 1, BUFSIZE, sdl2.SDL_AudioCallback(handle_sound))
+    target = sdl2.SDL_AudioSpec(0, 0, 0, 0)
+    dev = sdl2.SDL_OpenAudioDevice(None, 0, byref(spec), byref(target), 0)
+    assert target.freq == FREQ, target.freq
+    assert target.size == BUFSIZE*2, target.size
+
+    sdl2.SDL_PauseAudioDevice(dev, 0);
+
+    if stop:
+        stop.wait()
+    else:
+        while True:
+            time.sleep(1000)
+
+    sdl2.SDL_CloseAudioDevice(dev)
 
 
 def render_to_file(fname, ctl, gen, duration):
