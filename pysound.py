@@ -11,6 +11,7 @@ import pprint
 import json
 import math
 import collections
+import functools
 
 import cfilters
 from cfilters import addr
@@ -148,6 +149,12 @@ class Trigger:
         self._value = value
 
 
+@functools.lru_cache(50)
+def adsr_tail(a, b, cnt):
+    return (np.linspace(a, b, cnt, endpoint=False, dtype=np.float32),
+            np.full(BUFSIZE, b, dtype=np.float32))
+
+
 def env_adsr(trig, attack, decay, sustain, release, last=None):
     last = last or 0
     acnt = sps(attack / 1000)
@@ -156,14 +163,10 @@ def env_adsr(trig, attack, decay, sustain, release, last=None):
 
     ae = np.concatenate([
         np.linspace(last, 1, acnt, endpoint=False, dtype=np.float32),
-        np.linspace(1, sustain, dcnt, endpoint=False, dtype=np.float32),
-        np.full(BUFSIZE, sustain, dtype=np.float32),
+        *adsr_tail(1, sustain, dcnt)
     ])
 
-    re = np.concatenate([
-        np.linspace(sustain, 0, rcnt, dtype=np.float32),
-        np.full(BUFSIZE, 0, dtype=np.float32),
-    ])
+    re = np.concatenate(adsr_tail(sustain, 0, rcnt))
 
     samples = 0
     state = 1
