@@ -16,6 +16,13 @@ x11.XKeysymToString.restype = c_char_p
 _dpy = None
 _state = (c_char * 32)()
 
+_KEYNOTES1 = ['z', 's', 'x', 'd', 'c', 'v', 'g', 'b', 'h', 'n', 'j', 'm',
+             'comma', 'l', 'period', 'semicolon', 'slash', 'Shift_R', 'Return']
+_KEYNOTES2 = ['q', '2', 'w', '3', 'e', 'r', '5', 't', '6', 'y', '7', 'u',
+              'i', '9', 'o', '0', 'p', 'bracketleft', 'equal', 'bracketright', 'BackSpace', 'backslash']
+KEYNOTES = {it: i for i, it in enumerate(_KEYNOTES1)}
+KEYNOTES.update({it: i + 12 for i, it in enumerate(_KEYNOTES2)})
+
 
 def keyboard_state():
     global _dpy

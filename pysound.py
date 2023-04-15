@@ -283,6 +283,36 @@ class Player:
         return result
 
 
+def midi_player(ctl, player):
+    notes = ctl['midi_notes']
+    while notes:
+        etype, (ch, note, velocity) = notes.popleft()
+        print(time.time(), etype, ch, note)
+        if etype == 0:
+            player.note_off(ch, note)
+        elif etype == 1:
+            player.note_on(ch, note, velocity / 127)
+
+
+def kbd_player(channel=0, octave=4, volume=1.0):
+    import keys
+    state = set()
+
+    def step(ctl, player):
+        nonlocal state
+        pressed = set(it for it in ctl.get('keys', []) if it in keys.KEYNOTES)
+
+        for key in state - pressed:
+            player.note_off(channel, 12*octave + keys.KEYNOTES[key])
+
+        for key in pressed - state:
+            player.note_on(channel, 12*octave + keys.KEYNOTES[key], volume)
+
+        state = pressed
+
+    return step
+
+
 class mono:
     def __init__(self):
         self.gen = None
@@ -439,7 +469,7 @@ def create_window(controls, width):
     controls.ctl['midi_notes'] = collections.deque()
     def kb(_):
         controls.ctl['keys'] = keys.keyboard_state()
-        print(controls.ctl['keys'])
+        # print(controls.ctl['keys'])
 
     master = tk.Tk()
     master.bind('<KeyPress>', kb)

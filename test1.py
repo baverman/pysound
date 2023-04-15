@@ -1,7 +1,7 @@
 #MIDI_SOURCE=16:0 padsp python
 from pysound import (
     GUI, Var, lowpass, phasor, env_ahr, VarGroup,
-    BUFSIZE, FREQ, poly_adsr, Player)
+    BUFSIZE, FREQ, poly_adsr, Player, midi_player, kbd_player)
 
 import time
 import tonator
@@ -43,17 +43,6 @@ def synth(ctl, params):
         yield sig
 
 
-def midi_player(player):
-    notes = player.ctl['midi_notes']
-    while notes:
-        etype, (ch, note, velocity) = notes.popleft()
-        print(time.time(), etype, ch, note)
-        if etype == 0:
-            player.note_off(ch, note)
-        elif etype == 1:
-            player.note_on(ch, note, velocity / 127)
-
-
 def gen(ctl):
     n1 = tntparser.make_events("c=0 o=2 amul=2  !7b 2 !6 2 !5 2 !4  3b !2")
     # n2 = tntparser.make_events("c=1 o=3 amul=2  4   -  4 -  4 -  7b -   6")
@@ -62,11 +51,14 @@ def gen(ctl):
 
     player = Player()
     player.set_voice(0, poly_adsr(ctl['voice-1'], synth))
+    player.set_voice(1, poly_adsr(ctl['voice-2'], synth))
 
     seq = tntparser.player_event_adapter(FREQ, BUFSIZE)
+    kp = kbd_player(channel=1)
     while True:
+        midi_player(ctl, player)
+        kp(ctl, player)
         seq(player, taker, ctl['tempo'])
-        # midi_player(player)
         yield player()
 
 
