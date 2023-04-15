@@ -215,27 +215,72 @@ class poly:
         return result
 
 
-class Player:
-    def __init__(self, ctl, poly):
-        self.poly = poly
+class poly_adsr:
+    def __init__(self, ctl, synth, flt=None):
         self.ctl = ctl
-        self.triggers = {}
+        self.synth = synth
+        self.flt = flt
+        self.gens = {}
+
+    def add(self, key, params):
+        ctl = self.ctl
+        t = Trigger()
+        env = env_adsr(t, ctl['attack'], ctl.get('decay', ctl['attack']), ctl['sustain'], ctl['release'])
+        self.gens[key] = params, self.synth(self.ctl, params), env, t
+
+    def remove(self, key):
+        if key in self.gens:
+            self.gens[key][-1].set(False)
+
+    def __len__(self):
+        return len(self.gens)
+
+    def __call__(self, result=None):
+        toremove = []
+        if result is None:
+            result = np.full(BUFSIZE, 0, dtype=np.float32)
+        for key, (p, g, e, _t) in self.gens.items():
+            data = next(g, None)
+            if data is None or not e.running:
+                toremove.append(key)
+            else:
+                if self.flt:
+                    data = self.flt(self.ctl, p, data)
+                result += data * e() ** 4 * p['volume'] * self.ctl.get('volume', 1.0)
+
+        for it in toremove:
+            self.gens.pop(it)
+
+        return result
+
+
+class Player:
+    def __init__(self):
         self.channels = {}
 
-    def set_voice(self, channel, ctl_name, fn):
-        self.channels[channel] = ctl_name, fn
+    def set_voice(self, channel, env_synth):
+        self.channels[channel] = env_synth
 
     def note_on(self, channel, midi_note, volume):
-        key = channel, midi_note
         self.note_off(channel, midi_note)
-        t = self.triggers[key] = Trigger()
-        ctl_name, fn = self.channels[channel]
-        self.poly.add(fn(self.ctl[ctl_name], t, mtof(midi_note), volume))
+        es = self.channels[channel]
+        es.add(midi_note, {'freq': mtof(midi_note), 'volume': volume})
 
     def note_off(self, channel, midi_note):
-        key = channel, midi_note
-        if key in self.triggers:
-            self.triggers[key].set(False)
+        try:
+            self.channels[channel].remove(midi_note)
+        except KeyError:
+            pass
+
+    def __len__(self):
+        return len(self.channels)
+
+    def __call__(self, result=None):
+        if result is None:
+            result = np.full(BUFSIZE, 0, dtype=np.float32)
+        for es in self.channels.values():
+            result = es(result)
+        return result
 
 
 class mono:
@@ -475,6 +520,7 @@ def create_window(controls, width):
 
     def midi_cb(etype, value):
         nonlocal midi_ctrl
+        print('@@', time.time(), etype, value)
         if etype in (0, 1):
             controls.ctl['midi_notes'].append((etype, value))
         elif etype == 2:
@@ -616,6 +662,7 @@ def play(ctl, gen, dist_cb=None, wavfile=None, stop=None):
     dsp.setparameters(ossaudiodev.AFMT_S16_LE, 1, 44100)
     cnt = 0
     start = time.time()
+    printed = False
     while not stop or not stop.is_set():
         now = time.time()
         need_samples = (now - start) * FREQ + BUFSIZE
@@ -623,6 +670,14 @@ def play(ctl, gen, dist_cb=None, wavfile=None, stop=None):
             frame = next(gen, None)
             if frame is None:
                 break
+
+            do_pafter = False
+            if np.max(np.abs(frame)) > 0.001 and not printed:
+                do_pafter = True
+                printed = True
+                print('@@@', time.time())
+            elif np.max(np.abs(frame)) < 0.001 and printed:
+                printed = False
 
             frame *= ctl['master-volume']
             if np.max(np.abs(frame)) >= 1:
@@ -633,6 +688,8 @@ def play(ctl, gen, dist_cb=None, wavfile=None, stop=None):
 
             frame = (np.clip(frame, -0.99, 0.99) * 32767).astype(np.int16)
             dsp.write(frame)
+            if do_pafter:
+                print('@@@@', time.time())
             if wavfile:
                 wavfile.writeframesraw(frame)
             cnt += len(frame)

@@ -280,6 +280,27 @@ def take_until(loop):
     return take
 
 
+def player_event_adapter(freq, bufsize):
+    pos = F(0)
+    tmul = F(freq) / bufsize * 60 * 4
+
+    def step(player, taker, tempo):
+        nonlocal pos, tmul
+        for _, etype, evalue in taker(pos):
+            if etype == NOTE_ON:
+                ch, (o, offset), volume = evalue
+                note = 12 + o*12 + offset
+                player.note_on(ch, note, volume / 100)
+            elif etype == NOTE_OFF:
+                ch, (o, offset), _ = evalue
+                note = 12 + o*12 + offset
+                player.note_off(ch, note)
+
+        pos += int(tempo) / tmul
+
+    return step
+
+
 def play_midi(events):
     import rtmidi
     import heapq
