@@ -1,4 +1,4 @@
-#padsp python
+# python
 from functools import partial
 from pysound import osc, sin_t, fps, mtof, choicer, GUI, Var, env_ahr, mono
 from tonator import Scales

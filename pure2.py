@@ -1,4 +1,4 @@
-#padsp python
+# python
 # Envelope
 # https://www.youtube.com/watch?v=gqpvIwYko3o&list=PLqJgTfn3kSMW3AAAl2liJRKd-7DhZwLlq&index=2
 import numpy as np

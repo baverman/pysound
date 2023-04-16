@@ -1,4 +1,4 @@
-#padsp python
+# python
 # Acid
 # https://www.youtube.com/watch?v=_qImZOcHz2U&list=PLqJgTfn3kSMW3AAAl2liJRKd-7DhZwLlq&index=4
 from pysound import GUI, Var, mtof, lowpass, phasor, fps, poly, choicer, env_ahr, VarGroup
@@ -14,7 +14,7 @@ svars = [
     Var('filter-attack', 5, 1, 100),
     Var('filter-hold', 1, 1, 500, midi_ctrl=1),
     Var('filter-release', 260, 1, 2000),
-    Var('filter-cutoff', 15000, 100, 20000, midi_ctrl=2),
+    Var('filter-cutoff', 0.7, 0.0, 1.0, resolution=0.01, midi_ctrl=2),
     Var('filter-resonance', 0.7, 0.5, 1, resolution=0.001, midi_ctrl=3),
 ]
 

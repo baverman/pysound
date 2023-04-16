@@ -1,4 +1,4 @@
-#padsp python
+# python
 # Polyphony
 # https://www.youtube.com/watch?v=jGgu77pCfHU&list=PLqJgTfn3kSMW3AAAl2liJRKd-7DhZwLlq&index=3
 from pysound import GUI, Var, mtof, osc, sin_t, fps, choicer, poly, env_ahr

@@ -1,4 +1,4 @@
-#padsp python
+# python
 # Synth strings
 # https://www.youtube.com/watch?v=XVcQuI5Urdw&list=PLqJgTfn3kSMW3AAAl2liJRKd-7DhZwLlq&index=7
 from pysound import (
@@ -23,7 +23,7 @@ def square_mod():
     flt = lowpass()
     def sig(f, mfreq, mdepth):
         duty = 0.5 + mdepth * wm(mfreq) / 2.0
-        return flt(o(f, duty), 10000)
+        return flt(o(f, duty), 0.3)
     return sig
 
 
@@ -53,7 +53,7 @@ def synth(ctl, f):
 def gen(ctl):
     notes = choicer(it.value for it in Scales.major.notes)
     p = poly()
-    dc = dcblock()
+    dc = dcfilter()
     while True:
         f = mtof(60 + next(notes))
         p.add(synth(ctl, f))

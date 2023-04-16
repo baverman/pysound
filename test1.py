@@ -16,12 +16,12 @@ svars = [
     Var('filter-attack', 5, 1, 100),
     Var('filter-hold', 5, 1, 500),
     Var('filter-release', 260, 1, 2000),
-    Var('filter-cutoff', 15000, 100, 20000, midi_ctrl=2),
+    Var('filter-cutoff', 0.7, 0.0, 1.0, resolution=0.001, midi_ctrl=2),
     Var('filter-resonance', 0.7, 0.5, 1, resolution=0.001, midi_ctrl=3),
 ]
 
 gui = GUI(
-    Var('tempo', 320, 50, 600),
+    Var('tempo', 220, 50, 600),
     VarGroup('voice-1', svars, midi_channel=0),
     VarGroup('voice-2', svars, midi_channel=1),
     # VarGroup('voice-3', svars, midi_channel=2),

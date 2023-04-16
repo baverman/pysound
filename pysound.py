@@ -22,7 +22,7 @@ from cfilters import addr
 
 
 FREQ = 44100
-BUFSIZE = 256
+BUFSIZE = 512
 
 tau = np.pi * 2
 
@@ -222,6 +222,37 @@ class poly:
         return result
 
 
+class mono:
+    def __init__(self, ctl, synth, flt=None):
+        self.params = {'freq': 1}
+        self.synth = synth
+        self.env = None
+        self.gen = None
+        self.ctl = ctl
+        self.flt = flt
+
+    def add(self, key, params):
+        self.params.update(params)
+        ctl = self.ctl
+        last = self.env.last if self.env else 0.0
+        self.env = env_ahr(ctl['attack'], ctl['hold'], ctl['release'], last)
+
+    def remove(self, key):
+        pass
+
+    def __call__(self, result=None):
+        if result is None:
+            result = np.full(BUFSIZE, 0, dtype=np.float32)
+
+        data = next(self.gen, None)
+        if data is not None:
+            if self.flt:
+                data = self.flt(self.ctl, self.params, data)
+            result += data * (self.env() ** 4) * self.params['volume'] * self.ctl.get('volume', 1.0)
+
+        return result
+
+
 class poly_adsr:
     def __init__(self, ctl, synth, flt=None):
         self.ctl = ctl
@@ -322,29 +353,6 @@ def kbd_player(channel=0, octave=4, volume=1.0):
             player.note_on(channel, 12*octave + keys.KEYNOTES[key], volume)
 
     return step
-
-
-class mono:
-    def __init__(self):
-        self.gen = None
-        self.last = 0.0
-
-    def set(self, gen):
-        self.gen = gen
-
-    def __call__(self):
-        sig = None
-        if self.gen:
-            data = next(self.gen, None)
-            if data is None:
-                self.gen = None
-            else:
-                sig, self.last = data
-
-        if sig is None:
-            sig = np.full(BUFSIZE, 0, dtype=np.float32)
-
-        return sig
 
 
 def fft_plot(signal, window=2048, crop=0):
@@ -666,7 +674,7 @@ def lowpass():
     sa = addr(state)
 
     def sig(data, cutoff, resonance=0):
-        alpha = ensure_buf(cutoff) / FREQ
+        alpha = ensure_buf(cutoff)
         cfilters.lowpass(ra, addr(data), len(data), addr(alpha), resonance, sa)
         return result
 
@@ -700,7 +708,11 @@ def delay(max_duration=0.5):
 
 
 def play(ctl, gen, dist_cb=None, wavfile=None, stop=None):
+    cnt = 0
+    max_p = 0
     def handle_sound(_userdata, stream, length):
+        nonlocal cnt, max_p
+        s = time.perf_counter()
         frame = next(gen)
 
         frame *= ctl['master-volume']
@@ -718,6 +730,11 @@ def play(ctl, gen, dist_cb=None, wavfile=None, stop=None):
 
         if wavfile:
             wavfile.writeframesraw(frame)
+
+        dur = time.perf_counter() - s
+        if dur > max_p:
+            print('@@ max process time', dur)
+            max_p = dur
 
     sdl2.SDL_Init(sdl2.SDL_INIT_AUDIO)
     spec = sdl2.SDL_AudioSpec(FREQ, sdl2.AUDIO_S16LSB, 1, BUFSIZE, sdl2.SDL_AudioCallback(handle_sound))
