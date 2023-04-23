@@ -22,7 +22,7 @@ from cfilters import addr
 
 
 FREQ = 44100
-BUFSIZE = 512
+BUFSIZE = 256
 
 tau = np.pi * 2
 
@@ -51,9 +51,10 @@ def sinsum(steps, *partials):
     return x, y
 
 
-sin_t = sinsum(1024, 1)
-saw_t = sinsum(1024, *[1/i for i in range(1, 20)])
-square_t = sinsum(1024, *[1/i if i%2 else 0 for i in range(1, 20)])
+sin_t = sinsum(2048, 1)
+saw_t = sinsum(2048, *[1/i for i in range(1, 30)])
+tri_t = sinsum(2048, *[((-1)**((i-1)/2)) * 1/i**2 if i%2 else 0 for i in range(1, 20)])
+square_t = sinsum(2048, *[1/i if i%2 else 0 for i in range(1, 30)])
 square_unlim_t = square_t[0], np.sign(square_t[1])
 
 
@@ -71,9 +72,13 @@ class phasor:
         return result
 
 
+def phasor_apply(sig, table):
+    return np.interp(sig, *table).astype(np.float32)
+
+
 class osc:
-    def __init__(self, table, phase=0, freq=FREQ):
-        self.phasor = phasor(phase, freq)
+    def __init__(self, table, phase=0, freq=FREQ, p=None):
+        self.phasor = p or phasor(phase, freq)
         self.table = table
 
     def __call__(self, freq):
@@ -112,6 +117,31 @@ def seed_noise2(seed=None):
     def process():
         return (state.rand(BUFSIZE).astype(np.float32) > 0.5) * 2.0 - 1.0
     return process
+
+
+def line(last=0):
+    e = np.full(BUFSIZE, 0, dtype=np.float32)
+    samples = 0
+    cnt = 0
+
+    def pgen(value, duration):
+        nonlocal last, e, samples, cnt
+        if value != last:
+            samples = 0
+            cnt = sps(duration / 1000)
+            e = np.concatenate([
+                np.linspace(last, value, cnt, endpoint=False, dtype=np.float32),
+                np.full(BUFSIZE, value, dtype=np.float32)])
+
+        if samples < cnt:
+            result = e[samples:samples+BUFSIZE]
+        else:
+            result = e[-BUFSIZE:]
+
+        last = result[-1]
+        return result
+
+    return pgen
 
 
 def env_ahr(attack, hold, release, last=None):
@@ -180,11 +210,12 @@ def env_adsr(trig, attack, decay, sustain, release, last=None):
             if samples < acnt + dcnt:
                 result = ae[samples:samples+BUFSIZE]
             else:
-                result = ae[-BUFSIZE:]
                 if not trig:
                     state = 2
-                    samples = -BUFSIZE
-        elif state == 2:
+                    samples = 0
+                else:
+                    result = ae[-BUFSIZE:]
+        if state == 2:
             if samples < rcnt:
                 result = re[samples:samples+BUFSIZE]
             else:
@@ -195,6 +226,7 @@ def env_adsr(trig, attack, decay, sustain, release, last=None):
         gen.last = result[-1]
         return result
 
+    gen.last = last
     gen.running = True
     return gen
 
@@ -223,32 +255,42 @@ class poly:
 
 
 class mono:
-    def __init__(self, ctl, synth, flt=None):
+    def __init__(self, ctl, synth, flt=None, env_exp=2):
         self.params = {'freq': 1}
         self.synth = synth
         self.env = None
-        self.gen = None
+        self.env_exp = env_exp
+        self.gen = synth(ctl, self.params)
         self.ctl = ctl
         self.flt = flt
+        self.triggers = {}
 
     def add(self, key, params):
-        self.params.update(params)
         ctl = self.ctl
-        last = self.env.last if self.env else 0.0
-        self.env = env_ahr(ctl['attack'], ctl['hold'], ctl['release'], last)
+        last = 0.0
+        if self.env:
+            last = self.env.last * self.params['volume'] / params['volume']
+        self.triggers[key] = t = Trigger()
+        self.env = env_adsr(t, ctl['attack'], ctl.get('decay', ctl['attack']), ctl['sustain'], ctl['release'], last)
+        self.params.update(params)
 
     def remove(self, key):
-        pass
+        if key in self.triggers:
+            t = self.triggers.pop(key)
+            t.set(False)
 
     def __call__(self, result=None):
         if result is None:
             result = np.full(BUFSIZE, 0, dtype=np.float32)
 
+        if self.env is None:
+            return result
+
         data = next(self.gen, None)
         if data is not None:
             if self.flt:
                 data = self.flt(self.ctl, self.params, data)
-            result += data * (self.env() ** 4) * self.params['volume'] * self.ctl.get('volume', 1.0)
+            result += data * (self.env() ** self.env_exp) * self.params['volume'] * self.ctl.get('volume', 1.0)
 
         return result
 

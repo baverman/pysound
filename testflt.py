@@ -7,6 +7,12 @@ import cfilters
 from timeit_helper import timeit
 import cProfile
 
+# tri_t = sinsum(2048, 1, 0, -1/9, 0, 1/25, 0, -1/49, 0, 1/81, 0, -1/121)
+out = ps.sinsum(2048, *[((-1)**((i-1)/2)) * 1/i**2 if i%2 else 0 for i in range(1, 20)])
+plt.plot(*out)
+plt.show()
+1/0
+
 o = ps.osc(ps.sin_t)
 env = ps.env_ahr(1, 30, 1)
 d = ps.delay()
