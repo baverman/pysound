@@ -7,9 +7,23 @@ import cfilters
 from timeit_helper import timeit
 import cProfile
 
-# tri_t = sinsum(2048, 1, 0, -1/9, 0, 1/25, 0, -1/49, 0, 1/81, 0, -1/121)
-out = ps.sinsum(2048, *[((-1)**((i-1)/2)) * 1/i**2 if i%2 else 0 for i in range(1, 20)])
-plt.plot(*out)
+def gen(*items):
+    result = []
+    for it in items:
+        for x in it:
+            result.append(x)
+    return np.concatenate(result)
+
+p = ps.phasor()
+lfo = ps.osc(ps.sin_t)
+t = ps.noise()
+
+noise_t = np.linspace(0, 1, 2048, endpoint=False, dtype=np.float32), np.random.rand(2048).astype(np.float32)
+
+plt.plot(gen(noise_t[1][(p(1) * 2048).astype(np.int32)] for _ in range(ps.fps(2))))
+
+# plt.plot(gen(noise_t[1][p(1) * 2048] for _ in range(ps.fps(0.1))))
+# plt.plot(gen(l(o(300), 0.1) for _ in range(ps.fps(0.15))))
 plt.show()
 1/0
 

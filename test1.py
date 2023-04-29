@@ -23,11 +23,11 @@ svars = [
 ]
 
 gui = GUI(
+    Var('master-volume', 0.2, 0, 1, resolution=0.01),
     Var('tempo', 220, 50, 600),
     VarGroup('voice-1', sh101.svars, midi_channel=0),
     # VarGroup('voice-2', svars, midi_channel=1),
     # VarGroup('voice-3', svars, midi_channel=2),
-    Var('master-volume', 0.2, 0, 1, resolution=0.01),
     preset_prefix='sh101-',
 )
 
@@ -48,8 +48,10 @@ def synth(ctl, params):
 def gen(ctl):
     me = tntparser.make_events
     notes = tntparser.mix_events([
-        # me("c=0 o=2 amul=2 k=C !7b 2 !6 2 !5 2 !4  3b !2"),
-        me("c=0 o=3 amul=2 k=C 1 3 5 7 8 7 5 3"),
+        me("c=0 o=2 amul=2 k=C !7b 2 !6 2 !5 2 !4  3b !2"),
+        # me("c=0 o=3 amul=2 k=C 1 3 5 7 8 7 5 3"),
+        # me("c=0 o=3 k=C amul=2  G F# E <E G <D- D | D- E <C G- >A <B | >B- >C <E- G F# <D | - E D <C '>B >G '>A ''>>B")
+
         # me("c=1 o=3 amul=2  4   -  4 -  4 -  7b -   6")
     ])
     taker = tntparser.take_until(notes.loop())
@@ -63,7 +65,7 @@ def gen(ctl):
     while True:
         midi_player(ctl, player)
         kp(ctl, player)
-        seq(player, taker, ctl['tempo'])
+        # seq(player, taker, ctl['tempo'])
         yield player()
 
 

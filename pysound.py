@@ -13,6 +13,10 @@ import functools
 
 from glob import glob
 from ctypes import byref, memmove, c_void_p
+from functools import partial
+
+import tkinter as tk
+from tkinter import ttk
 
 import sdl2
 import numpy as np
@@ -52,9 +56,9 @@ def sinsum(steps, *partials):
 
 
 sin_t = sinsum(2048, 1)
-saw_t = sinsum(2048, *[1/i for i in range(1, 30)])
+saw_t = sinsum(2048, *[1/i for i in range(1, 50)])
 tri_t = sinsum(2048, *[((-1)**((i-1)/2)) * 1/i**2 if i%2 else 0 for i in range(1, 20)])
-square_t = sinsum(2048, *[1/i if i%2 else 0 for i in range(1, 30)])
+square_t = sinsum(2048, *[1/i if i%2 else 0 for i in range(1, 50)])
 square_unlim_t = square_t[0], np.sign(square_t[1])
 
 
@@ -74,6 +78,16 @@ class phasor:
 
 def phasor_apply(sig, table):
     return np.interp(sig, *table).astype(np.float32)
+
+
+def shold(value=0, prev=0):
+    def process(sig, phase):
+        nonlocal value, prev
+        result = cfilters.shold(sig, phase, value, prev)
+        value = result[-1]
+        prev = phase[-1]
+        return result
+    return process
 
 
 class osc:
@@ -286,11 +300,14 @@ class mono:
         if self.env is None:
             return result
 
+        e = self.env()
+        self.params['env'] = e
+
         data = next(self.gen, None)
         if data is not None:
             if self.flt:
                 data = self.flt(self.ctl, self.params, data)
-            result += data * (self.env() ** self.env_exp) * self.params['volume'] * self.ctl.get('volume', 1.0)
+            result += data * e ** self.env_exp * self.params['volume'] * self.ctl.get('volume', 1.0)
 
         return result
 
@@ -433,11 +450,6 @@ class GUI:
     def __iter__(self):
         return iter(self.controls)
 
-    def command(self, control):
-        def callback(value):
-            self.ctl[control.name] = float(value)
-        return callback
-
     def dist_cb(self):
         self.dist_counter += 1
         if self.update_dist:
@@ -472,9 +484,30 @@ class GUI:
             wavfile.close()
 
 
+class Scale:
+    def __init__(self, parent, *args, **kwargs):
+        self.root = tk.Frame(parent)
+        self.label = ttk.Label(self.root, text=kwargs.pop('label', None))
+        anchor = 'w' if kwargs.get('orient') == tk.HORIZONTAL else None
+        self.label.pack(anchor=anchor)
+        self.scale = tk.Scale(self.root, *args, **kwargs, showvalue=False)
+        self.scale.pack(fill=tk.Y, expand=1)
+        self.get = self.scale.get
+        self.set = self.scale.set
+
+    def bind(self, *args):
+        return self.scale.bind(*args)
+
+    def __setitem__(self, key, value):
+        if key == 'label':
+            self.label['text'] = value
+        else:
+            self.scale[key] = value
+
+
 class Var:
     def __init__(self, name, value, min, max, resolution=1, label=None,
-                 hidden=False, midi_ctrl=None, midi_channel=None):
+                 hidden=False, midi_ctrl=None, midi_channel=None, orient=tk.HORIZONTAL):
         self.name = name
         self.label = label or name.replace('-', ' ').title()
         self.val = value
@@ -484,6 +517,77 @@ class Var:
         self.hidden = hidden
         self.midi_ctrl = midi_ctrl
         self.midi_channel = midi_channel
+        self.orient = orient
+
+    def widget(self, parent, ctl, config):
+        def cb(val):
+            ctl[self.name] = float(val)
+
+        w = Scale(parent, from_=self.min, to=self.max, orient=self.orient,
+                  resolution=self.resolution, command=cb, label=self.label, length=200)
+        w.pysound_set_cb = cb
+        w.set(self.val)
+        config(self, w)
+        return w.root
+
+
+class VSlide(Var):
+    def __init__(self, name, value, min, max, resolution=None, **kwargs):
+        if not resolution:
+            resolution = (max-min)/1000;
+        super().__init__(name, value, max, min, resolution, orient=tk.VERTICAL, **kwargs)
+
+
+class Radio:
+    def __init__(self, name, value, choice, label=None):
+        self.name = name
+        self.label = label or name.replace('-', ' ').title()
+        self.val = value
+        self.choice = choice
+        self.hidden = False
+
+    def widget(self, parent, ctl, config):
+        frm = ttk.LabelFrame(parent, text=self.label, padding=5)
+        tkvar = tk.IntVar()
+
+        def cb():
+            ctl[self.name] = tkvar.get()
+
+        for i, label in enumerate(self.choice):
+            ttk.Radiobutton(frm, text=label, variable=tkvar, value=i, command=cb).pack(anchor='w')
+
+        tkvar.set(self.val)
+        config(self, tkvar)
+        return frm
+
+
+class HStack:
+    def __init__(self, *children, label=None, height=None, padding=10):
+        self.children = children
+        self.label = label
+        self.height = height
+        self.padding = padding
+
+    def widget(self, parent, ctl, config):
+        if self.label:
+            w = ttk.LabelFrame(parent, text=self.label, height=self.height, padding=self.padding)
+        else:
+            w = tk.Frame(parent, height=self.height, padding=self.padding)
+
+        for it in self.children:
+            it.widget(w, ctl, config).pack(side='left', padx=self.padding//2, fill=tk.Y, expand=1)
+
+        return w
+
+    def __iter__(self):
+        return iter(self.children)
+
+    def items(self):
+        for it in self.children:
+            if hasattr(it, 'items'):
+                yield from it.items()
+            else:
+                yield it
 
 
 class VarGroup:
@@ -491,17 +595,19 @@ class VarGroup:
         self.name = name
         self.controls = controls
         self.label = label or name.replace('-', ' ').title()
-        self.ctl = {it.name: it.val for it in controls}
+
+        self.ctl = {}
+        for it in controls:
+            if hasattr(it, 'items'):
+                self.ctl.update({it.name: it.val for it in it.items()})
+            else:
+                self.ctl[it.name] = it.val
+
         self.val = self.ctl
         self.midi_channel = midi_channel
 
     def __iter__(self):
         return iter(self.controls)
-
-    def command(self, control):
-        def callback(value):
-            self.ctl[control.name] = float(value)
-        return callback
 
 
 def get_presets(prefix):
@@ -521,10 +627,7 @@ def update_state(cmap, dest, src):
 
 
 def create_window(controls, width):
-    import tkinter as tk
-    from tkinter import ttk
     import keys
-
 
     internal_ctl_keys = 'keys', 'midi_notes'
     controls.ctl['keys'] = []
@@ -644,7 +747,22 @@ def create_window(controls, width):
         midi_ctrl = None
         e.widget['label'] = get_label(e.widget)
 
+    def setup_midi(cmap, v, w):
+        cmap[v.name] = w
+        w.orig_label = v.label
+        if hasattr(v, 'midi_channel'):
+            w.midi_channel = v.midi_channel or controls.midi_channel
+            w.midi_ctrl = v.midi_ctrl
+            w.midi_wait_value = None
+            w.round = int(math.log10(1/v.resolution))
+            if w.midi_ctrl is not None:
+                midi_ctrl_map[(w.midi_channel, w.midi_ctrl)] = w
+            w['label'] = get_label(w)
+            w.bind('<ButtonPress-3>', set_midi_ctrl)
+            w.bind('<ButtonRelease-3>', release_midi_ctrl)
+
     def pack_controls(parent, controls, cmap):
+        config = partial(setup_midi, cmap)
         nonlocal notebook
         for v in controls:
             if isinstance(v, VarGroup):
@@ -655,23 +773,7 @@ def create_window(controls, width):
                 notebook.add(nf, text=v.label)
                 pack_controls(nf, v, cmap.setdefault(v.name, {}))
             else:
-                set_cb = controls.command(v)
-                w = tk.Scale(parent, label=v.label, from_=v.min, to=v.max, orient=tk.HORIZONTAL,
-                             length=width, command=set_cb, resolution=v.resolution)
-                cmap[v.name] = w
-                w.orig_label = v.label
-                w.midi_channel = v.midi_channel or controls.midi_channel
-                w.midi_ctrl = v.midi_ctrl
-                w.midi_wait_value = None
-                w.round = int(math.log10(int(1/v.resolution)))
-                if w.midi_ctrl is not None:
-                    midi_ctrl_map[(w.midi_channel, w.midi_ctrl)] = w
-                w['label'] = get_label(w)
-                w.pysound_set_cb = set_cb
-                w.bind('<ButtonPress-3>', set_midi_ctrl)
-                w.bind('<ButtonRelease-3>', release_midi_ctrl)
-                w.set(v.val)
-                w.pack()
+                v.widget(parent, controls.ctl, config).pack(anchor='w', pady=5)
 
     pack_controls(scrollable_frame, controls, ctrl_map)
     canvas.pack(side="left", fill="both", expand=True)
@@ -752,10 +854,11 @@ def delay(max_duration=0.5):
 def play(ctl, gen, dist_cb=None, wavfile=None, stop=None):
     cnt = 0
     max_p = 0
+    dc = dcfilter()
     def handle_sound(_userdata, stream, length):
         nonlocal cnt, max_p
         s = time.perf_counter()
-        frame = next(gen)
+        frame = dc(next(gen))
 
         frame *= ctl['master-volume']
         if np.max(np.abs(frame)) >= 1:

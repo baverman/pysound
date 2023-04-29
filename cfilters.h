@@ -17,3 +17,5 @@ void delwrite(struct ring_buf *buf, const float src[], size_t length);
 
 void delmix(struct ring_buf *buf, float dst[], const float src[], int length,
             const int32_t delay_samples[]);
+
+void shold(float dst[], const float phase[], size_t n, float value, float prev);

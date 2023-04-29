@@ -30,3 +30,8 @@ def delwrite(buf, data):
 def delmix(buf, dst, src, delay):
     lib.delmix(buf[0], addr(dst), addr(src), len(src), addr(delay, 'int32_t[]'))
     return dst
+
+
+def shold(dst, src, value, prev):
+    lib.shold(addr(dst), addr(src), len(src), value, prev)
+    return dst

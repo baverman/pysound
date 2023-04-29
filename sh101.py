@@ -3,43 +3,102 @@
 import numpy as np
 from pysound import (
     saw_t, square_t, osc, noise, Var, lowpass, phasor, phasor_apply, sin_t,
-    tri_t, line
+    tri_t, line, HStack, VSlide, Radio, ensure_buf, shold
 )
 
-svars = [
-    Var('volume', 0.5, 0, 1, resolution=0.01),
-    Var('range', 2, 0, 3),
-    Var('porta', 0, 0, 200),
-    Var('pw', 0, 0, 0.5, resolution=0.001),
-    Var('square', 1, 0, 1, resolution=0.01),
-    Var('saw', 0, 0, 1, resolution=0.01),
-    Var('sub', 0, 0, 1, resolution=0.01),
-    Var('noise', 0, 0, 1, resolution=0.01),
-    Var('attack', 8, 1, 100),
-    Var('decay', 200, 1, 1000),
-    Var('sustain', 0, 0, 1, resolution=0.01),
-    Var('release', 0, 1, 2000),
-    Var('filter-cutoff', 0.7, 0.0, 1.0, resolution=0.001),
-    Var('filter-resonance', 0.7, 0.5, 1, resolution=0.001),
-    Var('filter-mod-lfo', 0, 0, 1, resolution=0.01),
-    Var('lfo-rate', 0, 0, 1, resolution=0.001)
-]
+svars = [HStack(
+    HStack(
+        VSlide('lfo-rate', 0, 0, 1, label='Rate'),
+        Radio('lfo-form', 0, ['tri', 'square', 'shold', 'noise'], label='Type'),
+        label='LFO',
+    ),
+    HStack(
+        VSlide('volume', 0, 0, 1, label='Vol'),
+        VSlide('porta', 0, 0, 200),
+        VSlide('vco-mod', 0, 0, 1, label='Mod'),
+        Radio('range', '4', ['16', '8', '4', '2']),
+        VSlide('pw', 0, 0, 0.4, label='PW'),
+        # VSlide('pw-mod', 0, 0, 0.4, label='Mod'),
+        Radio('pw-mod-type', 1, ['LFO', 'MAN', 'ENV'], label='Type'),
+        label='VCO',
+    ),
+    HStack(
+        VSlide('square', 1, 0, 1, label='Sqr'),
+        VSlide('saw', 0, 0, 1),
+        VSlide('sub', 0, 0, 1),
+        Radio('sub-type', 0, ['1 oct', '2 oct', '2 pulse'], label='Type'),
+        VSlide('noise', 0, 0, 1),
+        label='Source Mixer'
+    ),
+    HStack(
+        VSlide('filter-cutoff', 0.7, 0.0, 1.0, label='Freq'),
+        VSlide('filter-resonance', 0.7, 0.5, 1, label='Res'),
+        VSlide('filter-env', 0, 0, 1, label='Env'),
+        VSlide('filter-mod', 0, 0, 1, label='Mod'),
+        VSlide('filter-kbd', 0, 0, 1, label='Kbd'),
+        label='VCF'
+    ),
+    HStack(
+        VSlide('attack', 8, 1, 100, label='A'),
+        VSlide('decay', 200, 1, 1000, label='D'),
+        VSlide('sustain', 0, 0, 1, label='S'),
+        VSlide('release', 0, 1, 2000, label='R'),
+        label='Env',
+    ),
+    label='SH-101'
+)]
 
 
-def vco(ctl):
+def bw_pulse(psig, width):
+    wpsig =(psig + np.clip(0.5 - width, 0.01, 0.5)) % 1.0
+    return phasor_apply(psig, saw_t) - phasor_apply(wpsig, saw_t)
+
+
+def pulse(psig, width):
+    o = (psig > (0.5 + width)) * 2 - 1
+    return o.astype(np.float32)
+
+
+def vco(ctl, params):
     p1 = phasor()
-    p2 = phasor()
+    ps1 = phasor()
+    ps2 = phasor()
     pw_line = line(ctl['pw'])
     def gen(freq):
+        ff = freq
+        freq = freq * 2**(ctl['vco-mod']**3 * (params['lfo-freq'] - 0.5)/6)
         p1sig = p1(freq)
-        p2sig = p2(freq / 2)
-        wp1sig =(p1sig + np.clip(0.5 - pw_line(ctl['pw'], 10), 0.01, 0.5)) % 1.0
-        square = phasor_apply(p1sig, saw_t) - phasor_apply(wp1sig, saw_t)
+        if ctl['pw-mod-type'] == 0:
+            pw = ctl['pw'] * params['lfo-freq']
+        elif ctl['pw-mod-type'] == 1:
+            pw = pw_line(ctl['pw'], 10)
+        else:
+            pw = ctl['pw'] * params['env']
+
+        square = pulse(p1sig, pw)
         saw = phasor_apply(p1sig, saw_t)
-        sub = phasor_apply(p2sig, tri_t)
+
+        if ctl['sub-type'] > 0:
+            sfreq = ff / 4.0
+        else:
+            sfreq = ff / 2.0
+
+        # ps1sig = ps1(sfreq * 1.001)
+        # ps2sig = ps2(sfreq * 0.999)
+        # if ctl['sub-type'] == 2:
+        #     sub = pulse(ps1sig, 0.33) + pulse(ps2sig, 0.33)
+        # else:
+        #     sub = pulse(ps1sig, 0) + pulse(ps2sig, 0)
+
+        ssig = ps1(sfreq * 1.002)
+        if ctl['sub-type'] == 2:
+            sub = pulse(ssig, 0.33)
+        else:
+            sub = pulse(ssig, 0)
+
         return (square * ctl['square']
                 + saw * ctl['saw']
-                + sub * ctl['sub'] * 4
+                + sub * ctl['sub']
                 + noise() * ctl['noise'] / 2) / 4
 
     return gen
@@ -48,21 +107,36 @@ def vco(ctl):
 def vcf(ctl, params):
     lp = lowpass()
     def process(sig):
-        alpha = (ctl['filter-cutoff'] + ctl['filter-mod-lfo']*params['lfo-freq'])**2
+        alpha = (ctl['filter-cutoff'] + ctl['filter-mod']*params['lfo-freq'] + ctl['filter-env']*(params['env']**4))**2
         return lp(sig, alpha, ctl['filter-resonance'])
     return process
 
 
 def lfo(ctl, params):
     p = phasor()
+    sh = shold()
+    lp = lowpass()
     def sgen():
-        psig = p(ctl['lfo-rate']**4 * 500)
-        return np.abs(psig - 0.5) * 4 - 1
+        f = ctl['lfo-form']
+        freq = ctl['lfo-rate']**3 * 100
+        psig = p(freq)
+        if f == 0:  # tri
+            psig = np.abs(psig - 0.5) * 2
+        elif f == 1:  # square
+            psig = (psig > 0.5).astype(np.float32)
+        elif f == 2:  # s-hold
+            n = (noise() + 1) / 2
+            psig = lp(sh(n, psig), 0.1)
+        elif f == 3:  # noise
+            psig = (noise() + 1) / 2
+
+        return psig
+
     return sgen
 
 
 def synth(ctl, params):
-    vco_s = vco(ctl)
+    vco_s = vco(ctl, params)
     vcf_p = vcf(ctl, params)
     lfo_s = lfo(ctl, params)
 
@@ -70,7 +144,8 @@ def synth(ctl, params):
     R = [0.25, 0.5, 1, 2]
 
     while True:
-        # params['freq'] = 116
-        freq = freq_line(params['freq'] * R[int(ctl['range'])], ctl['porta'])
+        freq = params['freq'] * R[int(ctl['range'])]
+        if ctl['porta'] > 0:
+            freq = freq_line(freq, ctl['porta'])
         params['lfo-freq'] = lfo_s()
         yield vcf_p(vco_s(freq))

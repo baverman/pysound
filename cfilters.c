@@ -78,3 +78,13 @@ void delmix(struct ring_buf *buf, float dst[], const float src[], int length,
         dst[i] = src[i] + v;
     }
 }
+
+void shold(float dst[], const float phase[], size_t n, float value, float prev) {
+    for(size_t i=0; i<n; i++) {
+        if (phase[i] < prev) {
+            value = dst[i];
+        } else {
+            dst[i] = value;
+        }
+    }
+}
