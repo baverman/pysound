@@ -14,13 +14,9 @@ def gen(*items):
             result.append(x)
     return np.concatenate(result)
 
-p = ps.phasor()
-lfo = ps.osc(ps.sin_t)
-t = ps.noise()
+p = ps.poly_saw()
 
-noise_t = np.linspace(0, 1, 2048, endpoint=False, dtype=np.float32), np.random.rand(2048).astype(np.float32)
-
-plt.plot(gen(noise_t[1][(p(1) * 2048).astype(np.int32)] for _ in range(ps.fps(2))))
+plt.plot(gen(p(50) for _ in range(ps.fps(0.1))))
 
 # plt.plot(gen(noise_t[1][p(1) * 2048] for _ in range(ps.fps(0.1))))
 # plt.plot(gen(l(o(300), 0.1) for _ in range(ps.fps(0.15))))

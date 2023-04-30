@@ -3,7 +3,7 @@
 import numpy as np
 from pysound import (
     saw_t, square_t, osc, noise, Var, lowpass, phasor, phasor_apply, sin_t,
-    tri_t, line, HStack, VSlide, Radio, ensure_buf, shold
+    tri_t, line, HStack, VSlide, Radio, ensure_buf, shold, poly_saw
 )
 
 svars = [HStack(
@@ -32,7 +32,7 @@ svars = [HStack(
     ),
     HStack(
         VSlide('filter-cutoff', 0.7, 0.0, 1.0, label='Freq'),
-        VSlide('filter-resonance', 0.7, 0.5, 1, label='Res'),
+        VSlide('filter-resonance', 0.7, 0.0, 1, label='Res'),
         VSlide('filter-env', 0, 0, 1, label='Env'),
         VSlide('filter-mod', 0, 0, 1, label='Mod'),
         VSlide('filter-kbd', 0, 0, 1, label='Kbd'),
@@ -54,20 +54,23 @@ def bw_pulse(psig, width):
     return phasor_apply(psig, saw_t) - phasor_apply(wpsig, saw_t)
 
 
+def saw_pulse(saw_sig, width):
+    wpsig = (saw_sig + np.clip(0.5 - width, 0.01, 0.5)) % 1.0
+    return saw_sig - wpsig
+
+
 def pulse(psig, width):
     o = (psig > (0.5 + width)) * 2 - 1
     return o.astype(np.float32)
 
 
 def vco(ctl, params):
-    p1 = phasor()
-    ps1 = phasor()
-    ps2 = phasor()
+    ps = poly_saw()
+    sub_ps = poly_saw()
     pw_line = line(ctl['pw'])
     def gen(freq):
         ff = freq
         freq = freq * 2**(ctl['vco-mod']**3 * (params['lfo-freq'] - 0.5)/6)
-        p1sig = p1(freq)
         if ctl['pw-mod-type'] == 0:
             pw = ctl['pw'] * params['lfo-freq']
         elif ctl['pw-mod-type'] == 1:
@@ -75,26 +78,19 @@ def vco(ctl, params):
         else:
             pw = ctl['pw'] * params['env']
 
-        square = pulse(p1sig, pw)
-        saw = phasor_apply(p1sig, saw_t)
+        saw = ps(freq)
+        square = saw_pulse(saw, pw)
 
         if ctl['sub-type'] > 0:
             sfreq = ff / 4.0
         else:
             sfreq = ff / 2.0
 
-        # ps1sig = ps1(sfreq * 1.001)
-        # ps2sig = ps2(sfreq * 0.999)
-        # if ctl['sub-type'] == 2:
-        #     sub = pulse(ps1sig, 0.33) + pulse(ps2sig, 0.33)
-        # else:
-        #     sub = pulse(ps1sig, 0) + pulse(ps2sig, 0)
-
-        ssig = ps1(sfreq * 1.002)
+        ssig = sub_ps(sfreq)
         if ctl['sub-type'] == 2:
-            sub = pulse(ssig, 0.33)
+            sub = saw_pulse(ssig, 0.166)
         else:
-            sub = pulse(ssig, 0)
+            sub = saw_pulse(ssig, 0)
 
         return (square * ctl['square']
                 + saw * ctl['saw']

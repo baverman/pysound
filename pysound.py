@@ -825,6 +825,30 @@ def lowpass():
     return sig
 
 
+def poly_saw(phase=0.0):
+    def sgen(freq):
+        nonlocal phase
+        result = np.empty(BUFSIZE, dtype=np.float32)
+        dt = ensure_buf(freq) / FREQ
+        phase = cfilters.lib.poly_saw(addr(result), addr(dt), len(result), phase)
+        return result
+    return sgen
+
+
+def lowpass2():
+    result = np.empty(BUFSIZE, dtype=np.float32)
+    state = np.zeros(8, dtype=np.float32)
+    ra = addr(result)
+    sa = addr(state)
+
+    def sig(data, cutoff, resonance=0):
+        alpha = ensure_buf(cutoff)
+        cfilters.lib.moog(ra, addr(data), len(data), addr(alpha), resonance, sa)
+        return result
+
+    return sig
+
+
 def dcfilter(r=0.98):
     result = np.empty(BUFSIZE, dtype=np.float32)
     state = np.zeros(2, dtype=np.float32)
