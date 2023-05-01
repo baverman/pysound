@@ -24,3 +24,5 @@ void delmix(struct ring_buf *buf, float dst[], const float src[], int length,
 void shold(float dst[], const float phase[], size_t n, float value, float prev);
 
 float poly_saw(float dst[], float dt[], size_t n, float t);
+
+float poly_square(float dst[], float dt[], float pw[], size_t n, float t);

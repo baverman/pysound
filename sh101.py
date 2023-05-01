@@ -2,8 +2,8 @@
 
 import numpy as np
 from pysound import (
-    saw_t, square_t, osc, noise, Var, lowpass, phasor, phasor_apply, sin_t,
-    tri_t, line, HStack, VSlide, Radio, ensure_buf, shold, poly_saw
+    noise, lowpass, phasor, line, HStack, VSlide, Radio, ensure_buf,
+    shold, poly_saw, poly_square, dcfilter
 )
 
 svars = [HStack(
@@ -18,6 +18,7 @@ svars = [HStack(
         VSlide('vco-mod', 0, 0, 1, label='Mod'),
         Radio('range', '4', ['16', '8', '4', '2']),
         VSlide('pw', 0, 0, 0.4, label='PW'),
+        VSlide('sq-angle', 1, 1, 1.7, label='Ang'),
         # VSlide('pw-mod', 0, 0, 0.4, label='Mod'),
         Radio('pw-mod-type', 1, ['LFO', 'MAN', 'ENV'], label='Type'),
         label='VCO',
@@ -49,25 +50,14 @@ svars = [HStack(
 )]
 
 
-def bw_pulse(psig, width):
-    wpsig =(psig + np.clip(0.5 - width, 0.01, 0.5)) % 1.0
-    return phasor_apply(psig, saw_t) - phasor_apply(wpsig, saw_t)
-
-
-def saw_pulse(saw_sig, width):
-    wpsig = (saw_sig + np.clip(0.5 - width, 0.01, 0.5)) % 1.0
-    return saw_sig - wpsig
-
-
-def pulse(psig, width):
-    o = (psig > (0.5 + width)) * 2 - 1
-    return o.astype(np.float32)
-
-
 def vco(ctl, params):
-    ps = poly_saw()
-    sub_ps = poly_saw()
+    saw_g = poly_saw()
+    sqr_g = poly_square()
+    sub_sqr_g = poly_square()
     pw_line = line(ctl['pw'])
+
+    dc1 = dcfilter()
+    dc2 = dcfilter()
     def gen(freq):
         ff = freq
         freq = freq * 2**(ctl['vco-mod']**3 * (params['lfo-freq'] - 0.5)/6)
@@ -78,19 +68,18 @@ def vco(ctl, params):
         else:
             pw = ctl['pw'] * params['env']
 
-        saw = ps(freq)
-        square = saw_pulse(saw, pw)
+        saw = saw_g(freq)
+        square = dc1(sqr_g(freq, pw))
 
         if ctl['sub-type'] > 0:
             sfreq = ff / 4.0
         else:
             sfreq = ff / 2.0
 
-        ssig = sub_ps(sfreq)
         if ctl['sub-type'] == 2:
-            sub = saw_pulse(ssig, 0.166)
+            sub = dc2(sub_sqr_g(sfreq, 0.166))
         else:
-            sub = saw_pulse(ssig, 0)
+            sub = sub_sqr_g(sfreq, 0.0)
 
         return (square * ctl['square']
                 + saw * ctl['saw']

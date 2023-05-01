@@ -157,11 +157,27 @@ float poly_blep(float t, float dt) {
 
 
 float poly_saw(float dst[], float dt[], size_t n, float t) {
-  // Correct phase, so it would be in line with sin(2.*M_PI * t)
   for(size_t i=0; i<n; i++) {
-      t += dt[i];
       if (t >= 1.) t -= 1.;
-      dst[i] = t - poly_blep(t, dt[i]);
+      dst[i] = 2.*t - 1. - poly_blep(t, dt[i]);
+      t += dt[i];
+  }
+  return t;
+}
+
+
+float poly_square(float dst[], float dt[], float pw[], size_t n, float t) {
+  for(size_t i=0; i<n; i++) {
+      if (t >= 1.) t -= 1.;
+
+      float t2 = t + 0.5;
+      if (t2 >= 1.) t2 -= 1.;
+
+      float out = 1.0;
+      if (t > 0.5 + pw[i]) out = -1.0;
+
+      dst[i] = out + poly_blep(t, dt[i]) - poly_blep(t2, dt[i]);
+      t += dt[i];
   }
   return t;
 }

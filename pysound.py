@@ -56,9 +56,9 @@ def sinsum(steps, *partials):
 
 
 sin_t = sinsum(2048, 1)
-saw_t = sinsum(2048, *[1/i for i in range(1, 50)])
+saw_t = sinsum(2048, *[1/i for i in range(1, 20)])
 tri_t = sinsum(2048, *[((-1)**((i-1)/2)) * 1/i**2 if i%2 else 0 for i in range(1, 20)])
-square_t = sinsum(2048, *[1/i if i%2 else 0 for i in range(1, 50)])
+square_t = sinsum(2048, *[1/i if i%2 else 0 for i in range(1, 20)])
 square_unlim_t = square_t[0], np.sign(square_t[1])
 
 
@@ -278,12 +278,13 @@ class mono:
         self.ctl = ctl
         self.flt = flt
         self.triggers = {}
+        self.vol_line = line()
 
     def add(self, key, params):
         ctl = self.ctl
         last = 0.0
         if self.env:
-            last = self.env.last * self.params['volume'] / params['volume']
+            last = self.env.last
         self.triggers[key] = t = Trigger()
         self.env = env_adsr(t, ctl['attack'], ctl.get('decay', ctl['attack']), ctl['sustain'], ctl['release'], last)
         self.params.update(params)
@@ -307,7 +308,7 @@ class mono:
         if data is not None:
             if self.flt:
                 data = self.flt(self.ctl, self.params, data)
-            result += data * e ** self.env_exp * self.params['volume'] * self.ctl.get('volume', 1.0)
+            result += data * e ** self.env_exp * self.vol_line(self.params['volume'], 10) * self.ctl.get('volume', 1.0)
 
         return result
 
@@ -831,6 +832,17 @@ def poly_saw(phase=0.0):
         result = np.empty(BUFSIZE, dtype=np.float32)
         dt = ensure_buf(freq) / FREQ
         phase = cfilters.lib.poly_saw(addr(result), addr(dt), len(result), phase)
+        return result
+    return sgen
+
+
+def poly_square(phase=0.0):
+    def sgen(freq, pw=0.0):
+        nonlocal phase
+        result = np.empty(BUFSIZE, dtype=np.float32)
+        dt = ensure_buf(freq) / FREQ
+        pw = ensure_buf(np.clip(pw, 0, 0.4))
+        phase = cfilters.lib.poly_square(addr(result), addr(dt), addr(pw), len(result), phase)
         return result
     return sgen
 

@@ -7,6 +7,38 @@ import cfilters
 from timeit_helper import timeit
 import cProfile
 
+def poly_blep(t, dt):
+    if t < dt:
+        t /= dt
+        return t+t - t*t - 1.
+    elif t > 1. - dt:
+        t = (t - 1.) / dt
+        return t*t + t+t + 1.
+    return 0.0
+
+
+def poly_saw_s(t, dt):
+    naive_saw = 2.*t - 1.
+    return naive_saw - poly_blep(t, dt), t
+
+
+def poly_saw_n():
+    t = 0.0
+    def gen(freq):
+        nonlocal t
+        dt = ps.ensure_buf(freq) / ps.FREQ
+        result = np.zeros(ps.BUFSIZE, dtype=np.float32)
+        for i in range(ps.BUFSIZE):
+            if t >= 1.:
+                t -= 1.
+
+            result[i], t = poly_saw_s(t, dt[i])
+            # print(t, t < dt[i], t > 1. - dt[i], poly_blep(t, dt[i]))
+            t += dt[i]
+        return result
+    return gen
+
+
 def gen(*items):
     result = []
     for it in items:
@@ -14,9 +46,48 @@ def gen(*items):
             result.append(x)
     return np.concatenate(result)
 
-p = ps.poly_saw()
 
-plt.plot(gen(p(50) for _ in range(ps.fps(0.1))))
+def pulse(ssig):
+    ssig = (ssig + 1) / 2
+    return (ssig - ((ssig + 0.5) % 1.0))
+
+
+p = poly_saw_n()
+# p = ps.poly_saw()
+pp = ps.phasor()
+sqr = ps.poly_square()
+dc = ps.dcfilter()
+
+lfo = ps.osc(ps.sin_t)
+
+# plt.plot(gen(pulse(p(100)) for _ in range(10)))
+# plt.show()
+
+# plt.plot(gen(p(100 + lfo(10)*10.0) for _ in range(10)), 'o')
+
+# plt.plot(gen(sqr(1000) for _ in range(4)), '.')
+# plt.show()
+# 1/0
+
+f = 3969
+# s = gen(ps.phasor_apply(pp(f), ps.square_t) for _ in range(10))
+# plt.plot(*ps.fft_plot(s))
+
+# s = gen(ps.phasor_apply(pp(f), ps.saw_t) for _ in range(10))
+# plt.plot(*ps.fft_plot(s))
+
+# s = gen((pp(f) > 0.5) - 0.5 for _ in range(10))
+# plt.plot(*ps.fft_plot(s))
+
+# s = gen(pulse(p(f)) for _ in range(10))
+# plt.plot(*ps.fft_plot(s, crop=1))
+
+# s = gen(pp(f) for _ in range(10))
+# plt.plot(*ps.fft_plot(s, crop=1))
+
+s = gen(sqr(f) for _ in range(10))
+plt.plot(*ps.fft_plot(s, crop=1))
+
 
 # plt.plot(gen(noise_t[1][p(1) * 2048] for _ in range(ps.fps(0.1))))
 # plt.plot(gen(l(o(300), 0.1) for _ in range(ps.fps(0.15))))
