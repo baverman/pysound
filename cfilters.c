@@ -170,7 +170,7 @@ float poly_square(float dst[], float dt[], float pw[], size_t n, float t) {
   for(size_t i=0; i<n; i++) {
       if (t >= 1.) t -= 1.;
 
-      float t2 = t + 0.5;
+      float t2 = t + 0.5 - pw[i];
       if (t2 >= 1.) t2 -= 1.;
 
       float out = 1.0;

@@ -103,7 +103,7 @@ class osc:
 
 
 def ensure_buf(value, dtype=np.float32):
-    if type(value) in (int, float):
+    if type(value) in (int, float, np.float64):
         return np.full(BUFSIZE, value, dtype=dtype)
     return value
 
@@ -524,10 +524,24 @@ class Var:
         def cb(val):
             ctl[self.name] = float(val)
 
+        def incrset(event):
+            val = ctl[self.name]
+            delta = abs(self.min - self.max) / 500;
+            if event.num == 5:
+                delta = -delta
+            val += delta
+            event.widget.set(val)
+            rmax, rmin = self.min, self.max
+            if self.min > self.max:
+                rmax, rmin = rmin, rmax
+            ctl[self.name] = min(rmax, max(float(val), rmin))
+
         w = Scale(parent, from_=self.min, to=self.max, orient=self.orient,
                   resolution=self.resolution, command=cb, label=self.label, length=200)
         w.pysound_set_cb = cb
         w.set(self.val)
+        w.bind('<ButtonPress-4>', incrset)
+        w.bind('<ButtonPress-5>', incrset)
         config(self, w)
         return w.root
 
@@ -841,7 +855,7 @@ def poly_square(phase=0.0):
         nonlocal phase
         result = np.empty(BUFSIZE, dtype=np.float32)
         dt = ensure_buf(freq) / FREQ
-        pw = ensure_buf(np.clip(pw, 0, 0.4))
+        pw = ensure_buf(np.clip(pw, 0.0, 0.4))
         phase = cfilters.lib.poly_square(addr(result), addr(dt), addr(pw), len(result), phase)
         return result
     return sgen
@@ -861,7 +875,8 @@ def lowpass2():
     return sig
 
 
-def dcfilter(r=0.98):
+def dcfilter(cutoff=20):
+    r = 1 - (math.pi*2 * cutoff / FREQ)
     result = np.empty(BUFSIZE, dtype=np.float32)
     state = np.zeros(2, dtype=np.float32)
     ra = addr(result)

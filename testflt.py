@@ -56,7 +56,7 @@ p = poly_saw_n()
 # p = ps.poly_saw()
 pp = ps.phasor()
 sqr = ps.poly_square()
-dc = ps.dcfilter()
+dc = ps.dcfilter(20)
 
 lfo = ps.osc(ps.sin_t)
 
@@ -65,7 +65,7 @@ lfo = ps.osc(ps.sin_t)
 
 # plt.plot(gen(p(100 + lfo(10)*10.0) for _ in range(10)), 'o')
 
-# plt.plot(gen(sqr(1000) for _ in range(4)), '.')
+# plt.plot(gen(dc(sqr(1000, 0)) for _ in range(5)))
 # plt.show()
 # 1/0
 
@@ -85,7 +85,7 @@ f = 3969
 # s = gen(pp(f) for _ in range(10))
 # plt.plot(*ps.fft_plot(s, crop=1))
 
-s = gen(sqr(f) for _ in range(10))
+s = gen(dc(sqr(f, 0)) for _ in range(10))
 plt.plot(*ps.fft_plot(s, crop=1))
 
 
