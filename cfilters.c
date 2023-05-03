@@ -181,3 +181,53 @@ float poly_square(float dst[], float dt[], float pw[], size_t n, float t) {
   }
   return t;
 }
+
+
+void env_ahdsr(float dst[], size_t n, env_ahdsr_state *state, float a, float h, float d, float s, float r) {
+    size_t acnt = a / 1000.0 * state->srate;
+    size_t hcnt = h / 1000.0 * state->srate;
+    size_t dcnt = d / 1000.0 * state->srate;
+    size_t rcnt = r / 1000.0 * state->srate;
+    float speed = state->speed;
+
+    float val = state->last;
+    float target = 0.0;
+    size_t i=state->scount, j=0;
+
+    if (state->state == 0) {
+        for(; i<acnt && j<n; i++, j++) {
+            target = i/(float)acnt;
+            dst[j] = val = val + (target - val)/speed;
+        }
+
+        for(; i<acnt+hcnt && j<n; i++, j++) {
+            target = 1.0;
+            dst[j] = val = val + (target - val)/speed;
+        }
+
+        for(; i<acnt+hcnt+dcnt && j<n; i++, j++) {
+            target = 1.0 - (i - acnt - hcnt) / (float)dcnt * (1.0 - s);
+            dst[j] = val = val + (target - val)/speed;
+        }
+
+        for(;j<n; j++) {
+            target = s;
+            dst[j] = val = val + (target - val)/speed;
+        }
+    } else {
+        for(; i<rcnt && j<n; i++, j++) {
+            target = s - i/(float)rcnt*s;
+            dst[j] = val = val + (target - val)/speed;
+        }
+        for(;j<n; j++) {
+            target = 0.0;
+            dst[j] = val = val + (target - val)/speed;
+        }
+        if (i >= rcnt) {
+            state->state = 2;
+        }
+    }
+
+    state->last = val;
+    state->scount = i;
+}

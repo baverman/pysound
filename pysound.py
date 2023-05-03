@@ -277,38 +277,38 @@ class mono:
         self.gen = synth(ctl, self.params)
         self.ctl = ctl
         self.flt = flt
-        self.triggers = {}
         self.vol_line = line()
+        self.last = 0.0
 
     def add(self, key, params):
         ctl = self.ctl
-        last = 0.0
-        if self.env:
-            last = self.env.last
-        self.triggers[key] = t = Trigger()
-        self.env = env_adsr(t, ctl['attack'], ctl.get('decay', ctl['attack']), ctl['sustain'], ctl['release'], last)
+        self.env = env_ahdsr(self.last)
+        self.key = key
         self.params.update(params)
 
     def remove(self, key):
-        if key in self.triggers:
-            t = self.triggers.pop(key)
-            t.set(False)
+        env = self.env
+        if env and self.key == key:
+            env.stop = True
 
     def __call__(self, result=None):
         if result is None:
             result = np.full(BUFSIZE, 0, dtype=np.float32)
 
-        if self.env is None:
+        env = self.env
+        if env is None:
             return result
 
-        e = self.env()
+        ctl = self.ctl
+        e = env(ctl['attack'], ctl.get('decay', ctl['attack']), ctl['sustain'], ctl['release'], hold=ctl.get('hold', 0.0))
+        self.last = env.last
         self.params['env'] = e
 
         data = next(self.gen, None)
         if data is not None:
             if self.flt:
-                data = self.flt(self.ctl, self.params, data)
-            result += data * e ** self.env_exp * self.vol_line(self.params['volume'], 10) * self.ctl.get('volume', 1.0)
+                data = self.flt(ctl, self.params, data)
+            result += data * e ** self.env_exp * self.vol_line(self.params['volume'], 10) * ctl.get('volume', 1.0)
 
         return result
 
@@ -531,8 +531,8 @@ class Var:
                 delta = -delta
             val += delta
             event.widget.set(val)
-            rmax, rmin = self.min, self.max
-            if self.min > self.max:
+            rmax, rmin = self.max, self.min
+            if rmin > rmax:
                 rmax, rmin = rmin, rmax
             ctl[self.name] = min(rmax, max(float(val), rmin))
 
@@ -900,6 +900,23 @@ def delay(max_duration=0.5):
         cfilters.delay_process(ba, len(buf), addr(sig), len(sig), shift, feedback)
         return buf[-size:].copy()
     return process
+
+
+def env_ahdsr(last=0.0, speed=20.0):
+    state = cfilters.env_ahdsr_init(FREQ, last, speed)
+    def sgen(attack, decay, sustain, release, hold=0.0):
+        result = np.zeros(BUFSIZE, dtype=np.float32)
+        if state.state == 2:
+            return result
+        if state.state == 0 and sgen.stop:
+            state.state = 1
+            state.scount = 0
+        cfilters.lib.env_ahdsr(addr(result), BUFSIZE, state, attack, hold, decay, sustain, release)
+        sgen.last = state.last
+        return result
+
+    sgen.stop = False
+    return sgen
 
 
 def play(ctl, gen, dist_cb=None, wavfile=None, stop=None):

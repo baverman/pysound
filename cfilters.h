@@ -26,3 +26,14 @@ void shold(float dst[], const float phase[], size_t n, float value, float prev);
 float poly_saw(float dst[], float dt[], size_t n, float t);
 
 float poly_square(float dst[], float dt[], float pw[], size_t n, float t);
+
+
+typedef struct {
+    size_t scount;
+    float last;
+    int state;
+    size_t srate;
+    float speed;
+} env_ahdsr_state;
+
+void env_ahdsr(float dst[], size_t n, env_ahdsr_state *state, float a, float h, float d, float s, float r);

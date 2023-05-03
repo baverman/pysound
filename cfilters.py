@@ -35,3 +35,13 @@ def delmix(buf, dst, src, delay):
 def shold(dst, src, value, prev):
     lib.shold(addr(dst), addr(src), len(src), value, prev)
     return dst
+
+
+def env_ahdsr_init(srate, last, speed):
+    state = ffi.new('env_ahdsr_state *')
+    state.scount = 0
+    state.last = last
+    state.srate = srate
+    state.state = 0
+    state.speed = speed
+    return state

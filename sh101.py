@@ -13,10 +13,10 @@ svars = [HStack(
         label='LFO',
     ),
     HStack(
-        VSlide('volume', 0, 0, 1, label='Vol'),
+        VSlide('volume', 1, 0, 1, label='Vol'),
         VSlide('porta', 0, 0, 200),
         VSlide('vco-mod', 0, 0, 1, label='Mod'),
-        Radio('range', '4', ['16', '8', '4', '2']),
+        Radio('range', 2, ['16', '8', '4', '2']),
         VSlide('pw', 0, 0, 0.4, label='PW'),
         VSlide('sq-angle', 1, 1, 1.7, label='Ang'),
         # VSlide('pw-mod', 0, 0, 0.4, label='Mod'),
