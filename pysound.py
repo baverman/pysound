@@ -46,7 +46,7 @@ def mtof(num):
     return 440 * 2 ** ((num-69)/12)
 
 
-def sinsum(steps, *partials):
+def sinsum(steps, partials):
     x = np.linspace(0, 1, steps, endpoint=False, dtype=np.float32)
     y = 0
     for p, v in enumerate(partials, 1):
@@ -54,12 +54,12 @@ def sinsum(steps, *partials):
     y /= np.max(y)
     return x, y
 
+sin_partials = [1]
+saw_partials = lambda n: [1/i for i in range(1, n+1)]
+tri_partials = lambda n: [((-1)**((i-1)/2)) * 1/i**2 if i%2 else 0 for i in range(1, n+1)]
+square_partials = lambda n: [1/i if i%2 else 0 for i in range(1, n+1)]
 
-sin_t = sinsum(2048, 1)
-saw_t = sinsum(2048, *[1/i for i in range(1, 20)])
-tri_t = sinsum(2048, *[((-1)**((i-1)/2)) * 1/i**2 if i%2 else 0 for i in range(1, 20)])
-square_t = sinsum(2048, *[1/i if i%2 else 0 for i in range(1, 20)])
-square_unlim_t = square_t[0], np.sign(square_t[1])
+sin_t = sinsum(2048, sin_partials)
 
 
 class phasor:
@@ -861,15 +861,46 @@ def poly_square(phase=0.0):
     return sgen
 
 
-def lowpass2():
+def moog():
     result = np.empty(BUFSIZE, dtype=np.float32)
     state = np.zeros(8, dtype=np.float32)
+    state[7] = FREQ
     ra = addr(result)
     sa = addr(state)
 
     def sig(data, cutoff, resonance=0):
         alpha = ensure_buf(cutoff)
         cfilters.lib.moog(ra, addr(data), len(data), addr(alpha), resonance, sa)
+        return result
+
+    return sig
+
+
+def pdvcf():
+    result = np.empty(BUFSIZE, dtype=np.float32)
+    state = np.zeros(3, dtype=np.float32)
+    state[0] = FREQ
+    ra = addr(result)
+    sa = addr(state)
+
+    def sig(data, cutoff, resonance=0):
+        alpha = ensure_buf(cutoff)
+        cfilters.lib.pdvcf(ra, addr(data), len(data), addr(alpha), resonance, sa)
+        return result
+
+    return sig
+
+
+def flt12():
+    result = np.empty(BUFSIZE, dtype=np.float32)
+    state = np.zeros(3, dtype=np.float32)
+    state[0] = FREQ
+    ra = addr(result)
+    sa = addr(state)
+
+    def sig(data, cutoff, resonance=0):
+        alpha = ensure_buf(cutoff)
+        cfilters.lib.flt12(ra, addr(data), len(data), addr(alpha), resonance, sa)
         return result
 
     return sig

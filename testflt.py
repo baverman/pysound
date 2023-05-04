@@ -15,14 +15,12 @@ def gen(*items):
             result.append(x)
     return np.concatenate(result)
 
-e = ps.env_ahdsr(0.5, 20)
-data1 = gen(e(10, 10, 0.5, 10, 10) for _ in range(ps.fps(0.1)))
-e.stop = True
-data2 = gen(e(10, 10, 0.5, 10, 10) for _ in range(ps.fps(0.1)))
+s = ps.poly_square()
+lp = ps.moog()
 
-data = gen([data1, data2])
+data = gen(lp(ps.noise(), 0.5, 0.5) for _ in range(10))
 
-plt.plot(data)
+plt.plot(*ps.fft_plot(data))
 plt.show()
 1/0
 

@@ -3,8 +3,11 @@
 import numpy as np
 from pysound import (
     noise, lowpass, phasor, line, HStack, VSlide, Radio, ensure_buf,
-    shold, poly_saw, poly_square, dcfilter
+    shold, poly_saw, poly_square, dcfilter, moog, pdvcf, flt12, sinsum, square_partials,
+    phasor_apply
 )
+
+square_t = sinsum(2048, square_partials(20))
 
 svars = [HStack(
     HStack(
@@ -40,7 +43,7 @@ svars = [HStack(
         label='VCF'
     ),
     HStack(
-        VSlide('attack', 8, 1, 100, label='A'),
+        VSlide('attack', 8, 1, 1000, label='A'),
         VSlide('decay', 200, 1, 1000, label='D'),
         VSlide('sustain', 0, 0, 1, label='S'),
         VSlide('release', 0, 1, 2000, label='R'),
@@ -51,6 +54,7 @@ svars = [HStack(
 
 
 def vco(ctl, params):
+    p = phasor()
     saw_g = poly_saw()
     sqr_g = poly_square()
     sub_sqr_g = poly_square()
@@ -76,10 +80,12 @@ def vco(ctl, params):
         else:
             sfreq = ff / 2.0
 
+        psig = p(sfreq)
+
         if ctl['sub-type'] == 2:
             sub = dc2(sub_sqr_g(sfreq, 0.166))
         else:
-            sub = sub_sqr_g(sfreq, 0.0)
+            sub = dc2(phasor_apply(psig, square_t))
 
         return (square * ctl['square']
                 + saw * ctl['saw']
@@ -90,7 +96,7 @@ def vco(ctl, params):
 
 
 def vcf(ctl, params):
-    lp = lowpass()
+    lp = flt12()
     def process(sig):
         alpha = (ctl['filter-cutoff'] + ctl['filter-mod']*params['lfo-freq'] + ctl['filter-env']*(params['env']**4))**2
         return lp(sig, alpha, ctl['filter-resonance'])

@@ -37,53 +37,45 @@ void lowpass(float dst[], const float src[], size_t n,
     state[1] = s1;
 }
 
+
+#define MUUG_PI 3.14159265358979323846
+
 void moog(float dst[], const float src[], size_t n,
-             const float alpha[], float q, float state[]) {
-    float x = 0;
-    float oldx = state[0], y4=state[1],
-          oldy1=state[2], y1=state[3],
-          oldy2=state[4], y2=state[5],
-          oldy3=state[6], y3=state[7];
-
-    float kPi2 = 3.14f / 2.0f;
-
-    for(size_t i=0; i<n; i++) {
-        float p = alpha[i] * (1.8f - 0.8f * alpha[i]);
-        float k = 2.0f * sin(alpha[i] * kPi2) - 1.0f;
-
-        float t1 = (1.0f - p) * 1.386249f;
-        float t2 = 12.0f + t1 * t1;
-        float r = q * (t2 + 6.0f * t1) / (t2 - 6.0f * t1);
-
-        /* float f = alpha[i]; */
-        /* float p=f*(1.8f-0.8f*f); */
-        /* float k=p+p-1.f; */
-        /*  */
-        /* float t=(1.f-p)*1.386249f; */
-        /* float t2=12.f+t*t; */
-        /* float r = q*(t2+6.f*t)/(t2-6.f*t); */
-
-        x = src[i] - r*y4;
-
-        //Four cascaded onepole filters (bilinear transform)
-        y1 = x*p + oldx*p - k*y1;
-        y2 = y1*p + oldy1*p - k*y2;
-        y3 = y2*p + oldy2*p - k*y3;
-        y4 = y3*p + oldy3*p - k*y4;
-
-        //Clipper band limited sigmoid
-        y4 = y4 - (y4*y4*y4)/6.0f;
-        dst[i] = y4;
-
-        oldx = x;
-        oldy1 = y1;
-        oldy2 = y2;
-        oldy3 = y3;
+          const float alpha[], float q, float state[]) {
+    float v   = 2.0;
+    float ya1 = state[0];
+    float wa1 = state[1];
+    float yb1 = state[2];
+    float wb1 = state[3];
+    float yc1 = state[4];
+    float wc1 = state[5];
+    float yd1 = state[6];
+    for (size_t i = 0; i < n; ++i) {
+        float g = 1 - expf(-2. * MUUG_PI * alpha[i] * 20000. / state[7]);
+        float ya = ya1 + v * g * tanhf((src[i] - 4 * q * yd1) / v - wa1);
+        float wa = tanhf(ya / v);
+        float yb = yb1 + v * g * (wa - wb1);
+        float wb = tanhf(yb / v);
+        float yc = yc1 + v * g * (wb - wc1);
+        float wc = tanhf(yc / v);
+        float yd = yd1 + v * g * (wc - tanhf(yd1 / v));
+        float y = yd;
+        ya1 = ya;
+        wa1 = wa;
+        yb1 = yb;
+        wb1 = wb;
+        yc1 = yc;
+        wc1 = wc;
+        yd1 = yd;
+        dst[i] = y;
     }
-    state[0] = oldx; state[1] = y4;
-    state[2] = oldy1; state[3] = y1;
-    state[4] = oldy2; state[5] = y2;
-    state[6] = oldy3; state[7] = y3;
+    state[0] = ya1;
+    state[1] = wa1;
+    state[2] = yb1;
+    state[3] = wb1;
+    state[4] = yc1;
+    state[5] = wc1;
+    state[6] = yd1;
 }
 
 
@@ -230,4 +222,69 @@ void env_ahdsr(float dst[], size_t n, env_ahdsr_state *state, float a, float h, 
 
     state->last = val;
     state->scount = i;
+}
+
+
+void pdvcf(float dst[], const float src[], size_t n,
+           const float alpha[], float q, float state[]) {
+
+    float maxf = 10000. * 2. * MUUG_PI / state[0];
+    float re = state[1], re2;
+    float im = state[2];
+    q = q * 10;
+    float qinv = (q > 0? 1.0f/q : 0);
+    float ampcorrect = 2. - 2. / (q + 2.);
+    float coefr, coefi;
+
+    for(size_t i = 0; i < n; i++) {
+        float cf, r, oneminusr;
+        cf = (alpha[i] > 1. ? 1.0 : alpha[i]) * maxf;
+        if (cf < 0) cf = 0;
+        r = (qinv > 0 ? 1 - cf * qinv : 0);
+        if (r < 0) r = 0;
+        oneminusr = 1.0f - r;
+        coefr = r * cos(cf);
+        /* coefi = r * cos(cf - MUUG_PI/2.); */
+        coefi = r * sin(cf);
+
+        re2 = re;
+        re = ampcorrect * oneminusr * src[i] + coefr * re2 - coefi * im;
+        im = coefi * re2 + coefr * im;
+        dst[i] = re;
+    }
+
+    state[1] = re;
+    state[2] = im;
+}
+
+void flt12(float dst[], const float src[], size_t n,
+           const float alpha[], float q, float state[]) {
+
+    float vibrapos = state[1];
+    float vibraspeed = state[2];
+    float maxf = 10000. * 2. * MUUG_PI / state[0];
+
+    float amp = 1. + q*4.;
+
+    for(size_t i = 0; i < n; i++) {
+        float w = (alpha[i] > 1. ? 1.0 : alpha[i]) * maxf;
+        if (w < 0) w = 0;
+        float pm = 1.0-w/(2.0*(amp+0.5/(1.0+w))+w-2.0); // Pole magnitude
+        float r = pm*pm;
+        float c = r+1.0-2.0*cos(w)*pm;
+
+        vibraspeed += (src[i] - vibrapos) * c;
+        vibrapos += vibraspeed;
+        vibraspeed *= r;
+
+        float temp = vibrapos;
+        if (temp > 32767.)
+            temp = 32767.;
+        else if (temp < -32768.)
+            temp = -32768.;
+
+        dst[i] = temp;
+    }
+    state[1] = vibrapos;
+    state[2] = vibraspeed;
 }
