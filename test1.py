@@ -43,7 +43,7 @@ def gen(ctl):
     while True:
         midi_player(ctl, player)
         kp(ctl, player)
-        # seq(player, taker, ctl['tempo'])
+        seq(player, taker, ctl['tempo'])
         yield player()
 
 

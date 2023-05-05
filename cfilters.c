@@ -5,6 +5,9 @@
 
 #include "cfilters.h"
 
+#define MUUG_PI 3.14159265358979323846
+
+
 void dcfilter(float dst[], const float src[], size_t n, float state[], float R) {
     float px = state[0];
     float py = state[1];
@@ -19,26 +22,24 @@ void dcfilter(float dst[], const float src[], size_t n, float state[], float R) 
 void lowpass(float dst[], const float src[], size_t n,
              const float alpha[], float q, float state[]) {
     float fb;
-    float s0 = state[0];
-    float s1 = state[1];
+    float s0 = state[1];
+    float s1 = state[2];
     float f;
-    for(size_t i=0; i<n; i++) {
-        f = alpha[i];
-        if (f > 0.9999) {
-            f = 0.9999;
-        }
+    float maxf = 10000. * 2. * MUUG_PI / state[0];
 
-        fb = q + q/(1.0 - f);
+    for(size_t i=0; i<n; i++) {
+        f = (alpha[i] > 1. ? 1.0 : alpha[i]) * maxf;
+        if (f < 0.) f = 0.;
+        fb = q + q/(1.0 - f/1.5);
+        f = sin(f);
         s0 = s0 + f * (src[i] - s0 + fb * (s0 - s1));
         s1 = s1 + f * (s0 - s1);
         dst[i] = s1;
     }
-    state[0] = s0;
-    state[1] = s1;
+    state[1] = s0;
+    state[2] = s1;
 }
 
-
-#define MUUG_PI 3.14159265358979323846
 
 void moog(float dst[], const float src[], size_t n,
           const float alpha[], float q, float state[]) {

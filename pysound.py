@@ -828,7 +828,8 @@ def sps(duration=1):
 
 def lowpass():
     result = np.empty(BUFSIZE, dtype=np.float32)
-    state = np.zeros(2, dtype=np.float32)
+    state = np.zeros(3, dtype=np.float32)
+    state[0] = FREQ
     ra = addr(result)
     sa = addr(state)
 
@@ -840,7 +841,7 @@ def lowpass():
     return sig
 
 
-def poly_saw(phase=0.0):
+def poly_saw(phase=0.5):
     def sgen(freq):
         nonlocal phase
         result = np.empty(BUFSIZE, dtype=np.float32)

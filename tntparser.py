@@ -14,7 +14,7 @@ OFFSETS.update((f'{k}#', v+1) for k, v in LIT_NOTES.items())
 OFFSETS.update((f'{k}b', v-1) for k, v in LIT_NOTES.items())
 
 NOTE_RE = re.compile(r'^([<>#b!\']*)(-|_|\d+|[A-G])(.*)')
-LENGTH_RE = re.compile(r'(-|\.|:|=|\*|@|\d+)')
+LENGTH_RE = re.compile(r'(-|\.|:|\*|\d+)')
 CMD_RE = re.compile(r'(amul|o|g|v|k|c)=(.*)')
 
 NOTE = 2
@@ -110,16 +110,6 @@ def parse_length(l):
                 k *= pending
                 pending = None
             pending = F(1, 2)
-        elif it == '@':
-            if pending:
-                k *= pending
-                pending = None
-            pending = F(4)
-        elif it == '=':
-            if pending:
-                k *= pending
-                pending = None
-            pending = F(1, 4)
         else:
             if pending is None:
                 k = F(1, int(it))
@@ -309,6 +299,7 @@ def play_midi(events):
 
     def stop_play(*args):
         flag[0] = False
+
     signal.signal(15, stop_play)
 
     o = rtmidi.MidiOut()

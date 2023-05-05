@@ -12,69 +12,58 @@ def gen(*items):
     result = []
     for it in items:
         for x in it:
-            result.append(x)
+            result.append(x.copy())
     return np.concatenate(result)
 
-s = ps.poly_square()
-lp = ps.moog()
 
-data = gen(lp(ps.noise(), 0.5, 0.5) for _ in range(10))
+saw = ps.poly_saw(0.5)
+sq = ps.poly_square()
 
-plt.plot(*ps.fft_plot(data))
+data = gen(saw(300) for _ in range(10))
+plt.plot(data)
+
+data = gen(sq(300) for _ in range(10))
+plt.plot(data)
+
+def filter_im_res():
+    z = np.zeros(ps.BUFSIZE, dtype=np.float32)
+    impulse = z.copy()
+    impulse[20] = 1.0
+    parts = [impulse, *([z]*10)]
+
+    lp = ps.lowpass()
+    # lp = ps.pdvcf()
+    # lp = ps.moog()
+    # lp = ps.flt12()
+
+    cutoff = 0.7
+    res = 0.3
+    ff = ps.lowpass
+    # ff = ps.flt12
+    # ff = ps.moog
+
+    def response_res(cutoff):
+        data = gen(parts)
+        plt.plot(*ps.fft_plot(data, crop=1))
+
+        for res in (0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6):
+            lp = ff()
+            data = gen(lp(it, cutoff, res) for it in parts)
+            plt.plot(*ps.fft_plot(data, crop=1), label=str(res))
+
+
+    def response_f(res):
+        data = gen(parts)
+        plt.plot(*ps.fft_plot(data, crop=1))
+
+        for cutoff in (0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 0.8, 0.9, 1):
+            lp = ff()
+            data = gen(lp(it, cutoff, res) for it in parts)
+            plt.plot(*ps.fft_plot(data, crop=1), label=str(cutoff))
+
+    response_res(0.4)
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.legend(loc='upper left')
+
 plt.show()
-1/0
-
-o = ps.osc(ps.sin_t)
-env = ps.env_ahr(1, 20, 1)
-d = ps.delay()
-
-def ndelay():
-    buf = np.full(ps.sps(0.5), 0, dtype=np.float32)
-    pos = 0
-    bsize = len(buf)
-    fflt = ps.lowpass()
-    def process(sig, delay, _):
-        nonlocal pos
-        result = sig.copy()
-        ds = ps.sps(delay)
-        for i in range(len(result)):
-            s = buf[(pos + i - ds) % bsize]
-            result[i] = sig[i] + s
-            buf[(pos+i) % bsize] = result[i]
-        # plt.plot(buf)
-        # plt.show()
-        buf[pos:pos+len(result)] = fflt(result, 18000)
-        pos += len(result)
-        return result
-    return process
-
-
-def boo_delay():
-    buf = cfilters.init_ring_buf(ps.sps(0.5))
-    fflt = ps.lowpass()
-    def process(sig, delay, _):
-        delays = ps.ensure_buf(ps.sps(delay), np.int32)
-        result = ps.ensure_buf(0)
-        cfilters.delmix(buf, result, sig, delays)
-        cfilters.delwrite(buf, fflt(result, 18000))
-        plt.plot(np.diff(result, 2))
-        plt.show()
-        return result
-    return process
-
-
-d = ndelay()
-d = boo_delay()
-flt = ps.lowpass()
-n = ps.seed_noise(1)
-# plt.plot(n() * env())
-# plt.show()
-
-sig = np.concatenate([flt(n(), 8000) * env() for _ in range(ps.fps(0.06))])
-dsig = np.concatenate([d(sig[i:i+512], 0.010, 1) for i in range(0, len(sig), 512)])
-
-# plt.plot(sig)
-# plt.plot(np.diff(dsig, 2))
-plt.plot(dsig)
-plt.show()
-
