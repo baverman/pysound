@@ -4,7 +4,7 @@ import numpy as np
 from pysound import (
     noise, lowpass, phasor, line, HStack, VSlide, Radio, ensure_buf,
     shold, poly_saw, poly_square, dcfilter, moog, pdvcf, flt12, sinsum, square_partials,
-    phasor_apply
+    phasor_apply, bqlp
 )
 
 square_t = sinsum(2048, square_partials(20))
@@ -96,7 +96,7 @@ def vco(ctl, params):
 
 
 def vcf(ctl, params):
-    lp = flt12()
+    lp = bqlp()
     def process(sig):
         alpha = (ctl['filter-cutoff'] + ctl['filter-mod']*params['lfo-freq'] + ctl['filter-env']*(params['env']**4))**2
         return lp(sig, alpha, ctl['filter-resonance'])

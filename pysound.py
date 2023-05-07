@@ -826,7 +826,7 @@ def sps(duration=1):
     return int(duration * FREQ)
 
 
-def lowpass():
+def lowpass_orig():
     result = np.empty(BUFSIZE, dtype=np.float32)
     state = np.zeros(3, dtype=np.float32)
     state[0] = FREQ
@@ -836,6 +836,24 @@ def lowpass():
     def sig(data, cutoff, resonance=0):
         alpha = ensure_buf(cutoff)
         cfilters.lowpass(ra, addr(data), len(data), addr(alpha), resonance, sa)
+        return result
+
+    return sig
+
+
+lowpass = lowpass_orig
+
+
+def bqlp():
+    result = np.empty(BUFSIZE, dtype=np.float32)
+    state = np.zeros(5, dtype=np.float32)
+    state[4] = FREQ
+    ra = addr(result)
+    sa = addr(state)
+
+    def sig(data, cutoff, resonance=0):
+        alpha = ensure_buf(cutoff)
+        cfilters.lib.bqlp(ra, addr(data), len(data), addr(alpha), resonance, sa)
         return result
 
     return sig

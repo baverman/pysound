@@ -289,3 +289,39 @@ void flt12(float dst[], const float src[], size_t n,
     state[1] = vibrapos;
     state[2] = vibraspeed;
 }
+
+
+void bqlp(float dst[], const float src[], size_t n,
+          const float cutoff[], float res, float state[]) {
+
+    float x1 = state[0];
+    float x2 = state[1];
+    float y1 = state[2];
+    float y2 = state[3];
+    float maxf = 10000. * 2. * MUUG_PI / state[4];
+    float q = 0.7 + res*7.;
+
+    for(size_t i = 0; i < n; i++) {
+        float co = cutoff[i];
+        float f = maxf*(co < 0. ? 0. : (co > 1. ? 1. : co));
+        float sf = sin(f);
+        float cf = cos(f);
+        float alpha = sf/2./q;
+        float a0 = 1. + alpha;
+        float a1 = -2*cf;
+        float a2 = 1. - alpha;
+        float b0 = (1.-cf)/2.;
+        float b1 = 1.-cf;
+        float b2 = (1.-cf)/2.;
+        float y = dst[i] = (b0*src[i] + b1*x1 + b2*x2 - a1*y1 - a2*y2)/a0;
+        x2 = x1;
+        x1 = src[i];
+        y2 = y1;
+        y1 = y;
+    }
+
+    state[0] = x1;
+    state[1] = x2;
+    state[2] = y1;
+    state[3] = y2;
+}
