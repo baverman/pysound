@@ -269,39 +269,49 @@ class poly:
 
 
 class mono:
-    def __init__(self, ctl, synth, flt=None, env_exp=2):
-        self.params = {'freq': 1}
+    def __init__(self, ctl, synth, flt=None, env_exp=2, attack=0,
+                 decay=0, hold=0, sustain=0, release=0, wait_decay=False, env_factory=None):
+        self.params = {'freq': 1, 'volume': 0.0}
         self.synth = synth
-        self.env = None
         self.env_exp = env_exp
         self.gen = synth(ctl, self.params)
         self.ctl = ctl
         self.flt = flt
         self.vol_line = line()
-        self.last = 0.0
+        self.attack = attack
+        self.decay = decay
+        self.hold = hold
+        self.sustain = sustain
+        self.release = release
+        self.wait_decay = wait_decay
+        if env_factory:
+            self.env = env_factory(ctl, self.params)
+        else:
+            self.env = env_ahdsr(stopped=True)
+        self.params['env_gen'] = self.env
+        self.key = None
 
     def add(self, key, params):
         ctl = self.ctl
-        self.env = env_ahdsr(self.last)
+        self.env.trigger()
         self.key = key
         self.params.update(params)
 
     def remove(self, key):
-        env = self.env
-        if env and self.key == key:
-            env.stop = True
+        if self.key == key:
+            self.env.stop(self.wait_decay)
 
     def __call__(self, result=None):
         if result is None:
             result = np.full(BUFSIZE, 0, dtype=np.float32)
 
-        env = self.env
-        if env is None:
-            return result
-
         ctl = self.ctl
-        e = env(ctl['attack'], ctl.get('decay', ctl['attack']), ctl['sustain'], ctl['release'], hold=ctl.get('hold', 0.0))
-        self.last = env.last
+        e = self.env(ctl.get('attack', self.attack),
+                     ctl.get('decay', self.decay),
+                     ctl.get('sustain', self.sustain),
+                     ctl.get('release', self.release),
+                     hold=ctl.get('hold', self.hold))
+
         self.params['env'] = e
 
         data = next(self.gen, None)
@@ -524,6 +534,10 @@ class Var:
         def cb(val):
             ctl[self.name] = float(val)
 
+        def reset(event):
+            ctl[self.name] = self.val
+            w.set(self.val)
+
         def incrset(event):
             val = ctl[self.name]
             delta = abs(self.min - self.max) / 500;
@@ -542,6 +556,7 @@ class Var:
         w.set(self.val)
         w.bind('<ButtonPress-4>', incrset)
         w.bind('<ButtonPress-5>', incrset)
+        w.bind('<Control-ButtonRelease-1>', reset)
         config(self, w)
         return w.root
 
@@ -952,20 +967,35 @@ def delay(max_duration=0.5):
     return process
 
 
-def env_ahdsr(last=0.0, speed=20.0):
+def env_ahdsr(last=0.0, speed=1.0, stopped=False):
     state = cfilters.env_ahdsr_init(FREQ, last, speed)
+    if stopped:
+        state.state = 3
+    zero = np.zeros(BUFSIZE, dtype=np.float32)
+    result = np.zeros(BUFSIZE, dtype=np.float32)
+
     def sgen(attack, decay, sustain, release, hold=0.0):
-        result = np.zeros(BUFSIZE, dtype=np.float32)
-        if state.state == 2:
-            return result
-        if state.state == 0 and sgen.stop:
-            state.state = 1
-            state.scount = 0
+        if state.state == 3:
+            return zero
         cfilters.lib.env_ahdsr(addr(result), BUFSIZE, state, attack, hold, decay, sustain, release)
         sgen.last = state.last
         return result
 
-    sgen.stop = False
+    def stop(wait_decay=False):
+        if state.state == 0:
+            if wait_decay:
+                state.state = 1
+            else:
+                state.state = 2
+                state.scount = 0
+                state.release_level = state.last
+
+    def trigger():
+        state.state = 0
+        state.scount = 0
+
+    sgen.stop = stop
+    sgen.trigger = trigger
     return sgen
 
 
@@ -996,7 +1026,6 @@ def play(ctl, gen, dist_cb=None, wavfile=None, stop=None):
 
         dur = time.perf_counter() - s
         if dur > max_p:
-            print('@@ max process time', dur)
             max_p = dur
 
     sdl2.SDL_Init(sdl2.SDL_INIT_AUDIO)
@@ -1014,6 +1043,7 @@ def play(ctl, gen, dist_cb=None, wavfile=None, stop=None):
         while True:
             time.sleep(1000)
 
+    print('@@ max process time', max_p)
     sdl2.SDL_CloseAudioDevice(dev)
 
 

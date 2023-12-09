@@ -1987,13 +1987,13 @@ _cffi_pypyinit__asound(const void *p[])
 PyMODINIT_FUNC
 PyInit__asound(void)
 {
-  return _cffi_init("_asound", 0x2601, &_cffi_type_context);
+  return _cffi_init("asound._asound", 0x2601, &_cffi_type_context);
 }
 #else
 PyMODINIT_FUNC
 init_asound(void)
 {
-  _cffi_init("_asound", 0x2601, &_cffi_type_context);
+  _cffi_init("asound._asound", 0x2601, &_cffi_type_context);
 }
 #endif
 

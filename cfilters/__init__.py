@@ -1,5 +1,5 @@
 import numpy as np
-from _cfilters import ffi, lib
+from . _cfilters import ffi, lib
 
 def addr(arr, t="float[]"):
     return ffi.from_buffer(t, arr)

@@ -1,4 +1,4 @@
-from _asound import ffi, lib
+from . _asound import ffi, lib
 NULL = ffi.NULL
 
 

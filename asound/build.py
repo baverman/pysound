@@ -1,7 +1,7 @@
 from cffi import FFI
 ffibuilder = FFI()
 
-ffibuilder.set_source("_asound", """\
+ffibuilder.set_source("asound._asound", """\
     #include "alsa/asoundlib.h"
 """, libraries=['asound'])
 

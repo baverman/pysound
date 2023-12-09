@@ -43,6 +43,7 @@ typedef struct {
     int state;
     size_t srate;
     float speed;
+    float release_level;
 } env_ahdsr_state;
 
 void env_ahdsr(float dst[], size_t n, env_ahdsr_state *state, float a, float h, float d, float s, float r);

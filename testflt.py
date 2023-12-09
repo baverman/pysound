@@ -117,13 +117,15 @@ def hipass():
 
 
 def filter_im_res():
-    def response_res(flt, cutoff):
+    def response_res(flt, cutoff, min=0, max=1, step=0.1):
         data = gen(delta())
         plt.plot(*ps.fft_plot(data, crop=1), label='orig')
 
-        for res in (0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6):
+        res = min
+        while res <= max:
             lp = flt(cutoff, res)
-            filter_response(lp, label=str(res))
+            filter_response(lp, label=str(round(res, 1)))
+            res += step
 
 
     def response_f(flt, res):
@@ -132,7 +134,7 @@ def filter_im_res():
 
         for cutoff in (0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 0.8, 0.9):
             lp = flt(cutoff, res)
-            filter_response(lp, label=str(cutoff))
+            filter_response(lp, label=str(round(cutoff, 1)))
 
 
     def makeflt(flt_init, *args):
@@ -149,28 +151,25 @@ def filter_im_res():
         plt.ylim(0.00001, 0.01)
         plt.legend(loc='upper left')
 
-    plt.subplot(211)
-    response_res(makeflt(ps.bqlp), 0.4)
-    set_axes()
-
-    plt.subplot(212)
-    response_res(makeflt(ps.lowpass), 0.4)
-    set_axes()
-
     # plt.subplot(211)
-    # response_f(makeflt(spole), 0)
+    # response_res(makeflt(ps.bqlp), 0.4)
     # set_axes()
     #
     # plt.subplot(212)
-    # response_f(makeflt(biquad_lp), 0)
+    # response_res(makeflt(ps.lowpass), 0.4)
     # set_axes()
 
+    response_res(makeflt(ps.moog), 0.4, max=1)
+    set_axes()
 
-filter_im_res()
+env = ps.env_ahdsr(0.5)
+args = 5, 10000, 0, 5
+data = gen(env(*args) for _ in range(ps.fps(0.2)))
+env.stop()
+data = gen([data], (env(*args) for _ in range(ps.fps(0.2))))
+plt.plot(data, '.')
 
-# co = np.linspace(0, 0.5)
-# data = 1 - np.exp(-2*np.pi*co)
-# plt.plot(co, data)
+# filter_im_res()
 
 
 plt.show()

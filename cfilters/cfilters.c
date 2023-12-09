@@ -43,7 +43,7 @@ void lowpass(float dst[], const float src[], size_t n,
 
 void moog(float dst[], const float src[], size_t n,
           const float alpha[], float q, float state[]) {
-    float v   = 2.0;
+    float v   = 2.;
     float ya1 = state[0];
     float wa1 = state[1];
     float yb1 = state[2];
@@ -52,7 +52,7 @@ void moog(float dst[], const float src[], size_t n,
     float wc1 = state[5];
     float yd1 = state[6];
     for (size_t i = 0; i < n; ++i) {
-        float g = 1 - expf(-2. * MUUG_PI * alpha[i] * 20000. / state[7]);
+        float g = 1 - expf(-2. * MUUG_PI * alpha[i] * 10000. / state[7]);
         float ya = ya1 + v * g * tanhf((src[i] - 4 * q * yd1) / v - wa1);
         float wa = tanhf(ya / v);
         float yb = yb1 + v * g * (wa - wb1);
@@ -68,7 +68,7 @@ void moog(float dst[], const float src[], size_t n,
         yc1 = yc;
         wc1 = wc;
         yd1 = yd;
-        dst[i] = y;
+        dst[i] = y*(1+q*4);
     }
     state[0] = ya1;
     state[1] = wa1;
@@ -175,49 +175,72 @@ float poly_square(float dst[], float dt[], float pw[], size_t n, float t) {
   return t;
 }
 
+static inline
+float approach(float val, float target, float speed) {
+    if (target > val)
+        return (target - val) > speed ? val + speed : target;
+    else
+        return (val - target) > speed ? val - speed : target;
+}
+
 
 void env_ahdsr(float dst[], size_t n, env_ahdsr_state *state, float a, float h, float d, float s, float r) {
     size_t acnt = a / 1000.0 * state->srate;
     size_t hcnt = h / 1000.0 * state->srate;
     size_t dcnt = d / 1000.0 * state->srate;
     size_t rcnt = r / 1000.0 * state->srate;
-    float speed = state->speed;
+    float speed = state->speed * 1000.0 / state->srate;
 
     float val = state->last;
     float target = 0.0;
     size_t i=state->scount, j=0;
 
-    if (state->state == 0) {
+    // 0 trigger active
+    // 1 trigger released, should continue to play a/h/d and then state 2
+    // 2 trigger released, should stop anyway and then release
+    // 3 play finished
+
+    if (state->state < 2) {
         for(; i<acnt && j<n; i++, j++) {
             target = i/(float)acnt;
-            dst[j] = val = val + (target - val)/speed;
+            dst[j] = val = approach(val, target, speed);
         }
 
         for(; i<acnt+hcnt && j<n; i++, j++) {
             target = 1.0;
-            dst[j] = val = val + (target - val)/speed;
+            dst[j] = val = approach(val, target, speed);
         }
 
         for(; i<acnt+hcnt+dcnt && j<n; i++, j++) {
             target = 1.0 - (i - acnt - hcnt) / (float)dcnt * (1.0 - s);
-            dst[j] = val = val + (target - val)/speed;
+            dst[j] = val = approach(val, target, speed);
         }
+    }
 
+    if (state->state == 1 && j < n) {
+        state->state = 2;
+        state->scount = 0;
+        i = 0;
+    }
+
+    if (state->state == 0) {
         for(;j<n; j++) {
             target = s;
-            dst[j] = val = val + (target - val)/speed;
+            dst[j] = val = approach(val, target, speed);
         }
-    } else {
+    }
+
+    if (state->state == 2) {
         for(; i<rcnt && j<n; i++, j++) {
-            target = s - i/(float)rcnt*s;
-            dst[j] = val = val + (target - val)/speed;
+            target = state->release_level*(1. - i/(float)rcnt);
+            dst[j] = val = approach(val, target, speed);
         }
         for(;j<n; j++) {
             target = 0.0;
-            dst[j] = val = val + (target - val)/speed;
+            dst[j] = val = approach(val, target, speed);
         }
         if (i >= rcnt) {
-            state->state = 2;
+            state->state = 3;
         }
     }
 
@@ -291,6 +314,7 @@ void flt12(float dst[], const float src[], size_t n,
 }
 
 
+// https://webaudio.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html
 void bqlp(float dst[], const float src[], size_t n,
           const float cutoff[], float res, float state[]) {
 

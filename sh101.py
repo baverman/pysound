@@ -96,7 +96,7 @@ def vco(ctl, params):
 
 
 def vcf(ctl, params):
-    lp = bqlp()
+    lp = moog()
     def process(sig):
         alpha = (ctl['filter-cutoff'] + ctl['filter-mod']*params['lfo-freq'] + ctl['filter-env']*(params['env']**4))**2
         return lp(sig, alpha, ctl['filter-resonance'])
