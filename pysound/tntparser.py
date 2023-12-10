@@ -6,7 +6,7 @@ from collections import namedtuple
 from functools import lru_cache
 from fractions import Fraction as F
 
-import tonator
+from . import tonator
 
 LIT_NOTES = {n: i for i, n in enumerate('C.D.EF.G.A.B') if n != '.'}
 OFFSETS = LIT_NOTES.copy()

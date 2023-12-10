@@ -5,7 +5,7 @@ ffibuilder = FFI()
 src_dir = os.path.dirname(__file__)
 ffibuilder.cdef(open(os.path.join(src_dir, "cfilters.h")).read())
 
-ffibuilder.set_source("cfilters._cfilters",
+ffibuilder.set_source("pysound.cfilters._cfilters",
 """
 #include "cfilters.c"
 """, include_dirs=[src_dir])

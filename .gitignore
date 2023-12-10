@@ -5,4 +5,4 @@ __pycache__
 _cfilters.*
 *.txt
 *.state.json
-
+pysound/asound/_asound.c
