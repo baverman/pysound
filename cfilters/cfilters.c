@@ -209,9 +209,7 @@ void env_ahdsr(float dst[], size_t n, env_ahdsr_state *state, float a, float h, 
     if (state->state < 2) {
         float step = calc_step(val, 1.0, i, acnt);
         for(; i<acnt && j<n; i++, j++) {
-            if (step > 0) {
-                val += step;
-            }
+            val += step;
             dst[j] = val;
         }
 
@@ -221,9 +219,7 @@ void env_ahdsr(float dst[], size_t n, env_ahdsr_state *state, float a, float h, 
 
         step = calc_step(val, s, i, acnt+hcnt+dcnt);
         for(; i<acnt+hcnt+dcnt && j<n; i++, j++) {
-            if (step < 0) {
-                val += step;
-            }
+            val += step;
             dst[j] = val;
         }
     }

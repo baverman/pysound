@@ -270,20 +270,38 @@ class poly:
 
 
 class mono:
-    def __init__(self, ctl, synth):
-        self.params = {'freq': 1, 'volume': 0.0, 'gate': 0, 'retrigger': 0}
+    def __init__(self, ctl, synth, retrigger=True):
+        self.ctl = ctl
+        self.params = {'freq': 1, 'volume': 0.0}
         self.gen = synth(ctl, self.params)
+        self.params['env'].stop(False)
         self.key = None
+        self.vol_line = line()
+        self.freq_stack = []
+        self.retrigger = retrigger
 
     def add(self, key, params):
+        # print('add', key, params, self.freq_stack)
+        if self.key is not None:
+            self.freq_stack.append((self.key, self.params['freq']))
         self.key = key
         self.params.update(params)
-        self.params['gate'] = 1
-        self.params['retrigger'] = 1
+        if not self.freq_stack or self.retrigger:
+            self.params['env'].trigger()
 
     def remove(self, key):
-        if self.key == key:
-            self.params['gate'] = 0
+        # print('remove', key, self.freq_stack)
+        # if self.key == key:
+        #     self.params['env'].stop()
+
+        if self.freq_stack:
+            self.key, f = self.freq_stack.pop()
+            self.params['freq'] = f
+            if self.retrigger:
+                self.params['env'].trigger()
+        else:
+            self.key = None
+            self.params['env'].stop()
 
     def __call__(self, result=None):
         if result is None:
@@ -291,8 +309,7 @@ class mono:
 
         data = next(self.gen, None)
         if data is not None:
-            result += data
-            # result += data * e ** self.env_exp * self.vol_line(self.params['volume'], 10) * ctl.get('volume', 1.0)
+            result += data * self.vol_line(self.params['volume'], 10) * self.ctl.get('volume', 1.0)
 
         return result
 
@@ -348,7 +365,7 @@ class Player:
         self.channels[channel] = env_synth
 
     def note_on(self, channel, midi_note, volume):
-        self.note_off(channel, midi_note)
+        # self.note_off(channel, midi_note)
         es = self.channels[channel]
         es.add(midi_note, {'freq': mtof(midi_note), 'volume': volume})
 
@@ -941,8 +958,9 @@ def delay(max_duration=0.5):
     return process
 
 
-def env_ahdsr(last=0.0, speed=1.0, stopped=False):
-    state = cfilters.env_ahdsr_init(FREQ, last, speed)
+def env_ahdsr(last=0.0, stopped=False, wait_decay=False):
+    gwait_decay = wait_decay
+    state = cfilters.env_ahdsr_init(FREQ, last)
     if stopped:
         state.state = 3
     zero = np.zeros(BUFSIZE, dtype=np.float32)
@@ -955,7 +973,10 @@ def env_ahdsr(last=0.0, speed=1.0, stopped=False):
         sgen.last = state.last
         return result
 
-    def stop(wait_decay=False):
+    def stop(wait_decay=None):
+        if wait_decay is None:
+            wait_decay = gwait_decay
+
         if state.state == 0:
             if wait_decay:
                 state.state = 1
@@ -980,8 +1001,12 @@ def play(ctl, gen, dist_cb=None, wavfile=None, stop=None):
     def handle_sound(_userdata, stream, length):
         nonlocal cnt, max_p
         s = time.perf_counter()
-        frame = dc(next(gen))
 
+        frame = next(gen, None)
+        if frame is None:
+            return
+
+        frame = dc(frame)
         frame *= ctl['master-volume']
         if np.max(np.abs(frame)) >= 1:
             if dist_cb:

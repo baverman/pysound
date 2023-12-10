@@ -8,8 +8,8 @@ import tntparser
 gui = GUI(
     Var('master-volume', 0.2, 0, 1, resolution=0.01),
     Var('tempo', 220, 50, 600),
-    Var('attack', 0.1, 0, 1, label='A'),
-    Var('decay', 0.1, 0, 1, label='D'),
+    Var('attack', 0.1, 0.02, 1, label='A'),
+    Var('decay', 0.1, 0.02, 1, label='D'),
     Var('sustain', 0, 0, 1, label='S'),
     Var('release', 0, 0, 1, label='R'),
     preset_prefix='boo-',
@@ -20,26 +20,17 @@ tri_t = sinsum(4096, tri_partials(20))
 square_t = ps.sinsum(4096, ps.square_partials(20))
 
 def synth(ctl, params):
-    env = env_ahdsr(stopped=True, speed=1)
+    env = params['env'] = env_ahdsr()
     p = phasor()
-    pgate = 0
 
-    while True:
-        if params['gate'] != pgate:
-            pgate = params['gate']
-            if pgate:
-                env.trigger()
-            else:
-                env.stop(True)
+    def gen():
+        while True:
+            e = env(ctl['attack']**2.0*10000, ctl['decay']**2.0*10000, ctl['sustain'], ctl['release']**2.0*10000)
+            sig = p(params['freq'])
+            sig = phasor_apply(sig, tri_t)
+            yield sig * e
 
-        if params['retrigger']:
-            env.trigger()
-            params['retrigger'] = False
-
-        e = env(ctl['attack']**2.0*10000, ctl['decay']**2.0*10000, ctl['sustain'], ctl['release']**2.0*10000)
-        sig = p(params['freq'])
-        sig = phasor_apply(sig, ps.sin_t)
-        yield sig * e
+    return gen()
 
 
 def gen(ctl):
@@ -56,7 +47,7 @@ def gen(ctl):
     seq = tntparser.player_event_adapter(FREQ, BUFSIZE)
     while True:
         kp(ctl, player)
-        # seq(player, taker, ctl['tempo'])
+        seq(player, taker, ctl['tempo'])
         yield player()
 
 
