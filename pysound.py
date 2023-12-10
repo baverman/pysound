@@ -26,7 +26,7 @@ from cfilters import addr
 
 
 FREQ = 44100
-BUFSIZE = 256
+BUFSIZE = 512
 
 tau = np.pi * 2
 
@@ -152,6 +152,7 @@ def line(last=0):
         else:
             result = e[-BUFSIZE:]
 
+        samples += BUFSIZE
         last = result[-1]
         return result
 
@@ -269,56 +270,29 @@ class poly:
 
 
 class mono:
-    def __init__(self, ctl, synth, flt=None, env_exp=2, attack=0,
-                 decay=0, hold=0, sustain=0, release=0, wait_decay=False, env_factory=None):
-        self.params = {'freq': 1, 'volume': 0.0}
-        self.synth = synth
-        self.env_exp = env_exp
+    def __init__(self, ctl, synth):
+        self.params = {'freq': 1, 'volume': 0.0, 'gate': 0, 'retrigger': 0}
         self.gen = synth(ctl, self.params)
-        self.ctl = ctl
-        self.flt = flt
-        self.vol_line = line()
-        self.attack = attack
-        self.decay = decay
-        self.hold = hold
-        self.sustain = sustain
-        self.release = release
-        self.wait_decay = wait_decay
-        if env_factory:
-            self.env = env_factory(ctl, self.params)
-        else:
-            self.env = env_ahdsr(stopped=True)
-        self.params['env_gen'] = self.env
         self.key = None
 
     def add(self, key, params):
-        ctl = self.ctl
-        self.env.trigger()
         self.key = key
         self.params.update(params)
+        self.params['gate'] = 1
+        self.params['retrigger'] = 1
 
     def remove(self, key):
         if self.key == key:
-            self.env.stop(self.wait_decay)
+            self.params['gate'] = 0
 
     def __call__(self, result=None):
         if result is None:
             result = np.full(BUFSIZE, 0, dtype=np.float32)
 
-        ctl = self.ctl
-        e = self.env(ctl.get('attack', self.attack),
-                     ctl.get('decay', self.decay),
-                     ctl.get('sustain', self.sustain),
-                     ctl.get('release', self.release),
-                     hold=ctl.get('hold', self.hold))
-
-        self.params['env'] = e
-
         data = next(self.gen, None)
         if data is not None:
-            if self.flt:
-                data = self.flt(ctl, self.params, data)
-            result += data * e ** self.env_exp * self.vol_line(self.params['volume'], 10) * ctl.get('volume', 1.0)
+            result += data
+            # result += data * e ** self.env_exp * self.vol_line(self.params['volume'], 10) * ctl.get('volume', 1.0)
 
         return result
 
@@ -517,8 +491,10 @@ class Scale:
 
 
 class Var:
-    def __init__(self, name, value, min, max, resolution=1, label=None,
+    def __init__(self, name, value, min, max, resolution=None, label=None,
                  hidden=False, midi_ctrl=None, midi_channel=None, orient=tk.HORIZONTAL):
+        if not resolution:
+            resolution = (max-min)/1000;
         self.name = name
         self.label = label or name.replace('-', ' ').title()
         self.val = value
@@ -563,8 +539,6 @@ class Var:
 
 class VSlide(Var):
     def __init__(self, name, value, min, max, resolution=None, **kwargs):
-        if not resolution:
-            resolution = (max-min)/1000;
         super().__init__(name, value, max, min, resolution, orient=tk.VERTICAL, **kwargs)
 
 

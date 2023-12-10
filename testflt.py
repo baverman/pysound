@@ -162,11 +162,15 @@ def filter_im_res():
     response_res(makeflt(ps.moog), 0.4, max=1)
     set_axes()
 
-env = ps.env_ahdsr(0.5)
-args = 5, 10000, 0, 5
+env = ps.env_ahdsr(0.0)
+args = 5, 100, 0.8, 50
 data = gen(env(*args) for _ in range(ps.fps(0.2)))
-env.stop()
+env.stop(True)
 data = gen([data], (env(*args) for _ in range(ps.fps(0.2))))
+env.trigger()
+data = gen([data], (env(*args) for _ in range(ps.fps(0.5))))
+env.stop()
+data = gen([data], (env(*args) for _ in range(ps.fps(0.5))))
 plt.plot(data, '.')
 
 # filter_im_res()

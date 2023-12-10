@@ -183,17 +183,23 @@ float approach(float val, float target, float speed) {
         return (val - target) > speed ? val - speed : target;
 }
 
+static inline
+float calc_step(float start, float end, size_t i, size_t iend) {
+    if (i >= iend) {
+        return end;
+    }
+    return (end - start) / (float)(iend - i);
+}
+
 
 void env_ahdsr(float dst[], size_t n, env_ahdsr_state *state, float a, float h, float d, float s, float r) {
     size_t acnt = a / 1000.0 * state->srate;
     size_t hcnt = h / 1000.0 * state->srate;
     size_t dcnt = d / 1000.0 * state->srate;
     size_t rcnt = r / 1000.0 * state->srate;
-    float speed = state->speed * 1000.0 / state->srate;
 
     float val = state->last;
-    float target = 0.0;
-    size_t i=state->scount, j=0;
+    size_t i = state->scount, j=0;
 
     // 0 trigger active
     // 1 trigger released, should continue to play a/h/d and then state 2
@@ -201,43 +207,48 @@ void env_ahdsr(float dst[], size_t n, env_ahdsr_state *state, float a, float h, 
     // 3 play finished
 
     if (state->state < 2) {
+        float step = calc_step(val, 1.0, i, acnt);
         for(; i<acnt && j<n; i++, j++) {
-            target = i/(float)acnt;
-            dst[j] = val = approach(val, target, speed);
+            if (step > 0) {
+                val += step;
+            }
+            dst[j] = val;
         }
 
         for(; i<acnt+hcnt && j<n; i++, j++) {
-            target = 1.0;
-            dst[j] = val = approach(val, target, speed);
+            dst[j] = 1.0;
         }
 
+        step = calc_step(val, s, i, acnt+hcnt+dcnt);
         for(; i<acnt+hcnt+dcnt && j<n; i++, j++) {
-            target = 1.0 - (i - acnt - hcnt) / (float)dcnt * (1.0 - s);
-            dst[j] = val = approach(val, target, speed);
+            if (step < 0) {
+                val += step;
+            }
+            dst[j] = val;
         }
     }
 
     if (state->state == 1 && j < n) {
         state->state = 2;
         state->scount = 0;
+        state->release_level = val;
         i = 0;
     }
 
     if (state->state == 0) {
         for(;j<n; j++) {
-            target = s;
-            dst[j] = val = approach(val, target, speed);
+            dst[j] = s;
         }
     }
 
     if (state->state == 2) {
+        float step = calc_step(val, 0.0, i, rcnt);
         for(; i<rcnt && j<n; i++, j++) {
-            target = state->release_level*(1. - i/(float)rcnt);
-            dst[j] = val = approach(val, target, speed);
+            val += step;
+            dst[j] = val;
         }
         for(;j<n; j++) {
-            target = 0.0;
-            dst[j] = val = approach(val, target, speed);
+            dst[j] = 0.0;
         }
         if (i >= rcnt) {
             state->state = 3;
