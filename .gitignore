@@ -1,0 +1,8 @@
+__pycache__
+/build
+*.so
+*.o
+_cfilters.*
+*.txt
+*.state.json
+pysound/asound/_asound.c
