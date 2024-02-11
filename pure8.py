@@ -3,35 +3,35 @@
 # https://www.youtube.com/watch?v=5rVveOpGsWo&list=PLqJgTfn3kSMW3AAAl2liJRKd-7DhZwLlq&index=8
 import numpy as np
 from pysound import (
-    GUI, Var, mtof, fps, choicer, poly, env_ahr, lowpass, seed_noise, cfilters, sps,
-    ensure_buf, FREQ, dcfilter, mono)
-from tonator import Scales
+    mtof, fps, choicer, poly, env_ahdsr, lowpass, seed_noise, cfilters, sps,
+    ensure_buf, FREQ, dcfilter, mono, delay)
+from pysound.gui import GUI, Var
+from pysound.tonator import Scales
 
 gui = GUI(
     Var('tempo', 240, 50, 600),
     Var('attack', 15, 1, 100),
     Var('hold', 300, 1, 1000),
     Var('release', 2000, 1, 4000),
-    Var('feedback', 0.99, 0.95, 1, resolution=0.0001),
+    Var('feedback', 0.99, 0.8, 1, resolution=0.0001),
     Var('cutoff', 0.72, 0, 1, resolution=0.01),
     Var('master-volume', 0.2, 0, 1, resolution=0.01),
 )
 
 
 def synth():
-    buf = cfilters.init_ring_buf(sps(0.5))
     n = seed_noise(1)
     flt = lowpass()
     def gen(ctl, params):
-        tline = env_ahr(0, 30, 0)
+        eg = env_ahdsr()
+        e = env_ahdsr()
+        d = delay(0.5)
         delays = ensure_buf(FREQ/params['freq'], np.int32)
         while True:
-            sig = n() * tline()
-            result = ensure_buf(0)
-            cfilters.delmix(buf, result, sig, delays)
-            result = flt(result*ctl['feedback'], ctl['cutoff'])
-            cfilters.delwrite(buf, result)
-            yield result
+            sig = n() * eg(0, 0, 0, 0, 30)
+            sig = d(sig, delays, ctl['feedback'])
+            sig = sig * e(ctl['attack'], ctl['release'], 0, 0)
+            yield flt(sig, ctl['cutoff'])
 
     return gen
 

@@ -14,7 +14,7 @@ from .cfilters import addr
 
 FREQ = 44100
 FREQ = 48000
-BUFSIZE = 512
+BUFSIZE = 128
 
 tau = np.pi * 2
 
@@ -50,22 +50,26 @@ square_partials = lambda n: [1/i if i%2 else 0 for i in range(1, n+1)]
 sin_t = sinsum(2048, sin_partials)
 
 
-class phasor:
-    def __init__(self, phase=0, freq=FREQ):
-        self.phase = 0
-        self.freq = freq
-
-    def __call__(self, freq):
-        result = np.cumsum(ensure_buf(freq) / self.freq)
-        if result[-1] != 0:
-            result += self.phase
-        result %= 1
-        self.phase = result[-1]
-        return result
-
-
 def phasor_apply(sig, table):
     return np.interp(sig, *table).astype(np.float32)
+
+
+class phasor:
+    def __init__(self, phase=0, srate=FREQ):
+        self.phase = 0
+        self.srate = srate
+        self.fdelta = ensure_buf(0)
+        self.sig = ensure_buf(0)
+
+    def __call__(self, freq):
+        f = self.fdelta
+        if type(freq) in (int, float, np.float64):
+            f[:] = freq / self.srate
+        else:
+            np.divide(freq, self.srate, out=f)
+
+        self.phase = cfilters.lib.phasor(addr(self.sig), addr(f), len(f), self.phase)
+        return self.sig
 
 
 def shold(value=0, prev=0):
@@ -90,8 +94,11 @@ class osc:
         self.phasor.phase = phase
 
 
-def ensure_buf(value, dtype=np.float32, size=None):
+def ensure_buf(value, dtype=np.float32, size=None, out=None):
     if type(value) in (int, float, np.float64):
+        if out is not None:
+            out[:] = value
+            return out
         return np.full(size or BUFSIZE, value, dtype=dtype)
     return value
 
@@ -188,6 +195,19 @@ class mono:
         data = self.gen()
         result += data * self.vol_line(self.params['volume'], 10) * self.ctl.get('volume', 1.0)
         return result
+
+
+class menv:
+    def __init__(self, *envs):
+        self._envs = envs
+
+    def stop(self, wait_decay=False):
+        for e in self._envs:
+            e.stop(wait_decay)
+
+    @property
+    def active(self):
+        return any(it.active for it in self._envs)
 
 
 class poly:
@@ -318,103 +338,49 @@ def sps(duration=1):
     return int(duration * FREQ)
 
 
-def lowpass_orig():
-    result = np.empty(BUFSIZE, dtype=np.float32)
-    state = np.zeros(3, dtype=np.float32)
-    state[0] = FREQ
-    ra = addr(result)
-    sa = addr(state)
-
-    def sig(data, cutoff, resonance=0):
-        alpha = ensure_buf(cutoff)
-        cfilters.lowpass(ra, addr(data), len(data), addr(alpha), resonance, sa)
+def poly_saw():
+    result = ensure_buf(0)
+    def sgen(phasor):
+        cfilters.lib.poly_saw(addr(result), addr(phasor.sig), addr(phasor.fdelta), len(result))
         return result
+    return sgen
 
-    return sig
 
+def poly_square():
+    result = ensure_buf(0)
+    pwbuf = ensure_buf(0)
+    def sgen(phasor, pw=0.0):
+        pw = ensure_buf(np.clip(pw, 0.0, 0.45), out=pwbuf)
+        cfilters.lib.poly_square(addr(result), addr(phasor.sig), addr(phasor.fdelta), addr(pw), len(result))
+        return result
+    return sgen
+
+
+def make_filter(fn, scount):
+    def filter_constructor():
+        result = np.empty(BUFSIZE, dtype=np.float32)
+        state = np.zeros(scount + 1, dtype=np.float32)
+        state[0] = FREQ
+        ra = addr(result)
+        sa = addr(state)
+
+        def sig(data, cutoff, resonance=0):
+            alpha = ensure_buf(cutoff)
+            fn(ra, addr(data), len(data), addr(alpha), resonance, sa)
+            return result
+
+        return sig
+    return filter_constructor
+
+
+bqlp = make_filter(cfilters.lib.bqlp, 4)
+flt12 = make_filter(cfilters.lib.flt12, 2)
+pdvcf = make_filter(cfilters.lib.pdvcf, 2)
+moog = make_filter(cfilters.lib.moog, 7)
+lowpass_orig = make_filter(cfilters.lib.lowpass, 2)
+pole2 = make_filter(cfilters.lib.pole2, 2)
 
 lowpass = lowpass_orig
-
-
-def bqlp():
-    result = np.empty(BUFSIZE, dtype=np.float32)
-    state = np.zeros(5, dtype=np.float32)
-    state[4] = FREQ
-    ra = addr(result)
-    sa = addr(state)
-
-    def sig(data, cutoff, resonance=0):
-        alpha = ensure_buf(cutoff)
-        cfilters.lib.bqlp(ra, addr(data), len(data), addr(alpha), resonance, sa)
-        return result
-
-    return sig
-
-
-def poly_saw(phase=0.5):
-    def sgen(freq):
-        nonlocal phase
-        result = np.empty(BUFSIZE, dtype=np.float32)
-        dt = ensure_buf(freq) / FREQ
-        phase = cfilters.lib.poly_saw(addr(result), addr(dt), len(result), phase)
-        return result
-    return sgen
-
-
-def poly_square(phase=0.0):
-    def sgen(freq, pw=0.0):
-        nonlocal phase
-        result = np.empty(BUFSIZE, dtype=np.float32)
-        dt = ensure_buf(freq) / FREQ
-        pw = ensure_buf(np.clip(pw, 0.0, 0.4))
-        phase = cfilters.lib.poly_square(addr(result), addr(dt), addr(pw), len(result), phase)
-        return result
-    return sgen
-
-
-def moog():
-    result = np.empty(BUFSIZE, dtype=np.float32)
-    state = np.zeros(8, dtype=np.float32)
-    state[7] = FREQ
-    ra = addr(result)
-    sa = addr(state)
-
-    def sig(data, cutoff, resonance=0):
-        alpha = ensure_buf(cutoff)
-        cfilters.lib.moog(ra, addr(data), len(data), addr(alpha), resonance, sa)
-        return result
-
-    return sig
-
-
-def pdvcf():
-    result = np.empty(BUFSIZE, dtype=np.float32)
-    state = np.zeros(3, dtype=np.float32)
-    state[0] = FREQ
-    ra = addr(result)
-    sa = addr(state)
-
-    def sig(data, cutoff, resonance=0):
-        alpha = ensure_buf(cutoff)
-        cfilters.lib.pdvcf(ra, addr(data), len(data), addr(alpha), resonance, sa)
-        return result
-
-    return sig
-
-
-def flt12():
-    result = np.empty(BUFSIZE, dtype=np.float32)
-    state = np.zeros(3, dtype=np.float32)
-    state[0] = FREQ
-    ra = addr(result)
-    sa = addr(state)
-
-    def sig(data, cutoff, resonance=0):
-        alpha = ensure_buf(cutoff)
-        cfilters.lib.flt12(ra, addr(data), len(data), addr(alpha), resonance, sa)
-        return result
-
-    return sig
 
 
 def dcfilter(cutoff=20):
@@ -433,14 +399,12 @@ def dcfilter(cutoff=20):
 
 
 def delay(max_duration=0.5):
-    buf = np.full(sps(max_duration), 0, dtype=np.float32)
-    ba = addr(buf)
+    buf = cfilters.init_ring_buf(sps(max_duration))
+    result = np.empty(BUFSIZE, dtype=np.float32)
     def process(sig, delay, feedback):
-        size = len(sig)
-        shift = sps(delay)
-        buf[:-size] = buf[size:]
-        cfilters.delay_process(ba, len(buf), addr(sig), len(sig), shift, feedback)
-        return buf[-size:].copy()
+        shift = ensure_buf(delay, np.int32)
+        cfilters.delmix(buf, result, sig, shift, feedback)
+        return result
     return process
 
 

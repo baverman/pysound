@@ -27,8 +27,8 @@ def delwrite(buf, data):
     lib.delwrite(buf[0], addr(data), len(data))
 
 
-def delmix(buf, dst, src, delay):
-    lib.delmix(buf[0], addr(dst), addr(src), len(src), addr(delay, 'int32_t[]'))
+def delmix(buf, dst, src, delay, feedback):
+    lib.delmix(buf[0], addr(dst), addr(src), len(src), addr(delay, 'int32_t[]'), feedback)
     return dst
 
 

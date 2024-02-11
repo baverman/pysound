@@ -44,15 +44,15 @@ void lowpass(float dst[], const float src[], size_t n,
 void moog(float dst[], const float src[], size_t n,
           const float alpha[], float q, float state[]) {
     float v   = 2.;
-    float ya1 = state[0];
-    float wa1 = state[1];
-    float yb1 = state[2];
-    float wb1 = state[3];
-    float yc1 = state[4];
-    float wc1 = state[5];
-    float yd1 = state[6];
+    float ya1 = state[1];
+    float wa1 = state[2];
+    float yb1 = state[3];
+    float wb1 = state[4];
+    float yc1 = state[5];
+    float wc1 = state[6];
+    float yd1 = state[7];
     for (size_t i = 0; i < n; ++i) {
-        float g = 1 - expf(-2. * MUUG_PI * alpha[i] * 10000. / state[7]);
+        float g = 1 - expf(-2. * MUUG_PI * alpha[i] * 10000. / state[0]);
         float ya = ya1 + v * g * tanhf((src[i] - 4 * q * yd1) / v - wa1);
         float wa = tanhf(ya / v);
         float yb = yb1 + v * g * (wa - wb1);
@@ -70,13 +70,13 @@ void moog(float dst[], const float src[], size_t n,
         yd1 = yd;
         dst[i] = y*(1+q*4);
     }
-    state[0] = ya1;
-    state[1] = wa1;
-    state[2] = yb1;
-    state[3] = wb1;
-    state[4] = yc1;
-    state[5] = wc1;
-    state[6] = yd1;
+    state[1] = ya1;
+    state[2] = wa1;
+    state[3] = yb1;
+    state[4] = wb1;
+    state[5] = yc1;
+    state[6] = wc1;
+    state[7] = yd1;
 }
 
 
@@ -107,19 +107,16 @@ d = 3
 */
 
 void delmix(struct ring_buf *buf, float dst[], const float src[], int length,
-            const int32_t delay_samples[]) {
-    size_t k;
-    int i, j;
-    float v;
-    for(i=0, j=buf->start; i < length; i++, j++) {
-        if (delay_samples[i] <= i) {
-            v = dst[i - delay_samples[i]];
-        } else {
-            k = (j - delay_samples[i]) & buf->length_mask;
-            v = buf->data[k];
-        }
-        dst[i] = src[i] + v;
+            const int32_t delay_samples[], float feedback) {
+    int start = buf->start;
+    size_t mask = buf->length_mask;
+    for(int i=0; i < length; i++) {
+        size_t k = (start + i - delay_samples[i]) & mask;
+        float v = buf->data[k];
+        dst[i] = src[i] + v * feedback;
+        buf->data[(start + i) & mask] = dst[i];
     }
+    buf->start = (buf->start + length) & mask;
 }
 
 void shold(float dst[], const float phase[], size_t n, float value, float prev) {
@@ -138,41 +135,36 @@ float poly_blep(float t, float dt) {
   if (t < dt) {
     t /= dt;
     // 2 * (t - t^2/2 - 0.5)
-    return t+t - t*t - 1.;
-  } else if (t > 1. - dt) { // -1 < t < 0
-    t = (t - 1.) / dt;
+    return t+t - t*t - 1.f;
+  } else if (t > 1.f - dt) { // -1 < t < 0
+    t = (t - 1.f) / dt;
     // 2 * (t^2/2 + t + 0.5)
-    return t*t + t+t + 1.;
+    return t*t + t+t + 1.f;
   } else { // 0 otherwise
-    return 0.;
+    return 0.f;
   }
 }
 
 
-float poly_saw(float dst[], float dt[], size_t n, float t) {
+void poly_saw(float *restrict dst, float *restrict phase, float *restrict fdelta, size_t n) {
   for(size_t i=0; i<n; i++) {
-      if (t >= 1.) t -= 1.;
-      dst[i] = 2.*t - 1. - poly_blep(t, dt[i]);
-      t += dt[i];
+      float t = phase[i];
+      dst[i] = 2.f*t - 1.f - poly_blep(t, fdelta[i]);
   }
-  return t;
 }
 
 
-float poly_square(float dst[], float dt[], float pw[], size_t n, float t) {
+void poly_square(float dst[], float phase[], float fdelta[], float pw[], size_t n) {
   for(size_t i=0; i<n; i++) {
-      if (t >= 1.) t -= 1.;
-
+      float t = phase[i];
       float t2 = t + 0.5 - pw[i];
       if (t2 >= 1.) t2 -= 1.;
 
       float out = 1.0;
       if (t > 0.5 + pw[i]) out = -1.0;
 
-      dst[i] = out + poly_blep(t, dt[i]) - poly_blep(t2, dt[i]);
-      t += dt[i];
+      dst[i] = out + poly_blep(t, fdelta[i]) - poly_blep(t2, fdelta[i]);
   }
-  return t;
 }
 
 static inline
@@ -320,16 +312,35 @@ void flt12(float dst[], const float src[], size_t n,
     state[2] = vibraspeed;
 }
 
+void pole2(float dst[], const float src[], size_t n,
+           const float alpha[], float q, float state[]) {
+    float s1 = state[1];
+    float s2 = state[2];
+    float R = 1.0f - q;
+    float maxf = MUUG_PI / 3.0f;
+    for(size_t i = 0; i < n; i++) {
+        float g = (alpha[i] > 1. ? 1.0 : alpha[i]) * maxf;
+        float g1 = 2.0f*R + g;
+        float d = 1.0f / (1.0f + 2.0f*R*g + g*g);
+        float HP = (tanh(src[i]) - g1*s1 - s2) * d;
+        float v1 = g*HP; float BP = v1 + s1; s1 = BP + v1;
+        float v2 = g*BP; float LP = v2 + s2; s2 = LP + v2;
+        dst[i] = LP*1.33f;
+    }
+    state[1] = s1;
+    state[2] = s2;
+}
+
 
 // https://webaudio.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html
 void bqlp(float dst[], const float src[], size_t n,
           const float cutoff[], float res, float state[]) {
 
-    float x1 = state[0];
-    float x2 = state[1];
-    float y1 = state[2];
-    float y2 = state[3];
-    float maxf = 10000. * 2. * MUUG_PI / state[4];
+    float x1 = state[1];
+    float x2 = state[2];
+    float y1 = state[3];
+    float y2 = state[4];
+    float maxf = 10000. * 2. * MUUG_PI / state[0];
     float q = 0.7 + res*7.;
 
     for(size_t i = 0; i < n; i++) {
@@ -351,8 +362,21 @@ void bqlp(float dst[], const float src[], size_t n,
         y1 = y;
     }
 
-    state[0] = x1;
-    state[1] = x2;
-    state[2] = y1;
-    state[3] = y2;
+    state[1] = x1;
+    state[2] = x2;
+    state[3] = y1;
+    state[4] = y2;
+}
+
+
+float phasor(float *restrict dst, float *restrict delta, size_t n, float phase) {
+    for(size_t i=0; i<n; ++i) {
+        dst[i] = phase;
+        phase += delta[i];
+        if (phase > 1.f) {
+            phase -= 1.f;
+        }
+
+    }
+    return phase;
 }

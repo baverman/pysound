@@ -4,7 +4,7 @@ import numpy as np
 from scipy import signal
 import matplotlib.pyplot as plt
 import pysound as ps
-import cfilters
+from pysound import cfilters
 from timeit_helper import timeit
 import cProfile
 
@@ -98,6 +98,41 @@ def biquad_lp():
     return sgen
 
 
+def pole2():
+    s1, s2 = 0.0, 0.0
+    result = np.zeros(ps.BUFSIZE, dtype=np.float32)
+    def sgen(sig, cutoff, res):
+        nonlocal s1, s2
+        R = 1 - res
+        g = math.tan(cutoff*1.4)
+        g = cutoff * 3.14;
+        g1 = 2*R + g
+        d = 1 / (1 + 2*R*g + g**2)
+        for i in range(len(sig)):
+            HP = (sig[i] - g1*s1 - s2) * d
+            v1 = g*HP; BP = v1 + s1; s1 = BP + v1
+            v2 = g*BP; LP = v2 + s2; s2 = LP + v2
+            result[i] = LP
+        return result
+    return sgen
+
+
+def pole1():
+    s = [0.0]
+    result = np.zeros(ps.BUFSIZE, dtype=np.float32)
+    def sgen(sig, cutoff, res):
+        g = math.tan(cutoff*1.4)
+        g = cutoff * 3.14;
+        # print(cutoff, g)
+        G = g / (1 + g)
+        for i in range(len(sig)):
+            v = (sig[i] - s[0]) * G
+            result[i] = v + s[0]
+            s[0] = result[i] + v
+        return result
+    return sgen
+
+
 def hipass():
     x1 = 0
     y1 = 0
@@ -134,7 +169,7 @@ def filter_im_res():
 
         for cutoff in (0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 0.8, 0.9):
             lp = flt(cutoff, res)
-            filter_response(lp, label=str(round(cutoff, 1)))
+            filter_response(lp, label=str(round(cutoff, 2)))
 
 
     def makeflt(flt_init, *args):
@@ -159,19 +194,27 @@ def filter_im_res():
     # response_res(makeflt(ps.lowpass), 0.4)
     # set_axes()
 
-    response_res(makeflt(ps.moog), 0.4, max=1)
+    # response_res(makeflt(ps.moog), 0.4, max=1)
+    # response_f(makeflt(pole2), 0.4)
+    response_f(makeflt(ps.pole2), 0.9)
     set_axes()
 
-env = ps.env_ahdsr(0.0)
-args = 5, 100, 0.8, 50
-data = gen(env(*args) for _ in range(ps.fps(0.2)))
-env.stop(True)
-data = gen([data], (env(*args) for _ in range(ps.fps(0.2))))
-env.trigger()
-data = gen([data], (env(*args) for _ in range(ps.fps(0.5))))
-env.stop()
-data = gen([data], (env(*args) for _ in range(ps.fps(0.5))))
-plt.plot(data, '.')
+# env = ps.env_ahdsr(0.0)
+# args = 5, 100, 0.8, 50
+# data = gen(env(*args) for _ in range(ps.fps(0.2)))
+# env.stop(True)
+# data = gen([data], (env(*args) for _ in range(ps.fps(0.2))))
+# env.trigger()
+# data = gen([data], (env(*args) for _ in range(ps.fps(0.5))))
+# env.stop()
+# data = gen([data], (env(*args) for _ in range(ps.fps(0.5))))
+#
+p1 = ps.phasor()
+p2 = ps.phasor_new()
+timeit('p1(480)')
+timeit('p2(480)')
+# data = gen(p2(480) for _ in range(ps.fps(0.2)))
+# plt.plot(data, '.')
 
 # filter_im_res()
 

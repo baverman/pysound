@@ -117,7 +117,6 @@ class Var:
     def widget(self, parent, ctl, config):
         def cb(val):
             ctl[self.name] = self.transform(float(val))
-            print('@', self.name, ctl[self.name])
 
         def reset(event):
             ctl[self.name] = self.transform(self.val)
@@ -138,6 +137,7 @@ class Var:
         w = Scale(parent, from_=self.min, to=self.max, orient=self.orient,
                   resolution=self.resolution, command=cb, label=self.label, length=200)
         w.pysound_set_cb = cb
+        w.pysound_init = lambda val: w.set(self.rtransform(val))
         w.set(self.val)
         w.bind('<ButtonPress-4>', incrset)
         w.bind('<ButtonPress-5>', incrset)
@@ -236,7 +236,10 @@ def update_state(cmap, dest, src):
             update_state(cmap[k], dest[k], v)
         else:
             dest[k] = v
-            cmap[k].set(v)
+            if hasattr(cmap[k], 'pysound_init'):
+                cmap[k].pysound_init(v)
+            else:
+                cmap[k].set(v)
 
 
 def create_window(controls, width):
