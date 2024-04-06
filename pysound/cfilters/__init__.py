@@ -37,11 +37,23 @@ def shold(dst, src, value, prev):
     return dst
 
 
-def env_ahdsr_init(srate, last):
-    state = ffi.new('env_ahdsr_state *')
+def env_adsr_lin_init(srate, last):
+    state = ffi.new('env_adsr_state *')
     state.scount = 0
     state.last = last
     state.srate = srate
     state.state = 0
     state.speed = 0
+    return state
+
+def env_adsr_exp_init(srate, last):
+    state = ffi.new('env_adsr_exp_state *')
+    state.srate = srate
+    state.last = last
+    state.state = 0
+    state.decay_next_state = 4
+    state.lspeed = 0
+    state.rise_th = 0.7;
+    state.fall_th = 0.001;
+    state.hcount = 0
     return state

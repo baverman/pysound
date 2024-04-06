@@ -3,7 +3,7 @@
 # https://www.youtube.com/watch?v=5rVveOpGsWo&list=PLqJgTfn3kSMW3AAAl2liJRKd-7DhZwLlq&index=8
 import numpy as np
 from pysound import (
-    mtof, fps, choicer, poly, env_ahdsr, lowpass, seed_noise, cfilters, sps,
+    mtof, fps, choicer, poly, env_adsr, lowpass, seed_noise, cfilters, sps,
     ensure_buf, FREQ, dcfilter, mono, delay)
 from pysound.gui import GUI, Var
 from pysound.tonator import Scales
@@ -23,8 +23,8 @@ def synth():
     n = seed_noise(1)
     flt = lowpass()
     def gen(ctl, params):
-        eg = env_ahdsr()
-        e = env_ahdsr()
+        eg = env_adsr()
+        e = env_adsr()
         d = delay(0.5)
         delays = ensure_buf(FREQ/params['freq'], np.int32)
         while True:

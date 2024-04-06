@@ -12,9 +12,9 @@ from . import cfilters
 from .cfilters import addr
 
 
-FREQ = 44100
+# FREQ = 44100
 FREQ = 48000
-BUFSIZE = 128
+BUFSIZE = 512
 
 tau = np.pi * 2
 
@@ -201,7 +201,7 @@ class menv:
     def __init__(self, *envs):
         self._envs = envs
 
-    def stop(self, wait_decay=False):
+    def stop(self, wait_decay=None):
         for e in self._envs:
             e.stop(wait_decay)
 
@@ -340,7 +340,7 @@ def sps(duration=1):
 
 def poly_saw():
     result = ensure_buf(0)
-    def sgen(phasor):
+    def sgen(phasor, *args):
         cfilters.lib.poly_saw(addr(result), addr(phasor.sig), addr(phasor.fdelta), len(result))
         return result
     return sgen
@@ -438,9 +438,9 @@ class Buffer:
         return self.buf[p:p+size]
 
 
-def env_ahdsr(last=0.0, stopped=False, wait_decay=False):
+def env_adsr_lin(last=0.0, stopped=False, wait_decay=False):
     gwait_decay = wait_decay
-    state = cfilters.env_ahdsr_init(FREQ, last)
+    state = cfilters.env_adsr_lin_init(FREQ, last)
     if stopped:
         state.state = 3
     zero = np.zeros(BUFSIZE, dtype=np.float32)
@@ -450,7 +450,7 @@ def env_ahdsr(last=0.0, stopped=False, wait_decay=False):
         if state.state == 3:
             sgen.active = False
             return zero
-        cfilters.lib.env_ahdsr(addr(result), BUFSIZE, state, attack, hold, decay, sustain, release)
+        cfilters.lib.env_adsr(addr(result), BUFSIZE, state, attack, hold, decay, sustain, release)
         sgen.last = state.last
         return result
 
@@ -472,6 +472,69 @@ def env_ahdsr(last=0.0, stopped=False, wait_decay=False):
         sgen.active = True
         state.state = 0
         state.scount = 0
+
+    sgen.stop = stop
+    sgen.trigger = trigger
+    return sgen
+
+
+def env_adsr(last=0.0, stopped=False, wait_decay=False, rise_th=0.05, fall_th=0.01, lspeed=10):
+    gwait_decay = wait_decay
+    state = cfilters.env_adsr_exp_init(FREQ, last)
+    state.rise_th = rise_th
+    state.fall_th = fall_th
+    state.lspeed = lspeed
+    if stopped:
+        state.state = 0
+    else:
+        state.state = 1
+
+    zero = np.zeros(BUFSIZE, dtype=np.float32)
+    result = np.zeros(BUFSIZE, dtype=np.float32)
+    next_state_mut = None
+
+    def sgen(attack, decay, sustain, release, hold=0.0):
+        nonlocal next_state_mut
+
+        if state.state == 0:
+            sgen.active = False
+            return zero
+
+        if next_state_mut:
+            next_state_mut()
+            next_state_mut = None
+
+        cfilters.lib.env_adsr_exp(addr(result), BUFSIZE, state, attack, hold, decay, sustain, release)
+        sgen.last = state.last
+        return result
+
+    sgen.active = not stopped
+
+    def state_stop_with_decay():
+        state.decay_next_state = 5
+
+    def state_stop():
+        state.state = 5
+
+    def state_start():
+        state.state = 1
+        state.decay_next_state = 4
+
+    def stop(wait_decay=None):
+        nonlocal next_state_mut
+        if wait_decay is None:
+            wait_decay = gwait_decay
+
+        if state.state > 0:
+            if wait_decay and state.state < 4:
+                next_state_mut = state_stop_with_decay
+            else:
+                next_state_mut = state_stop
+
+    def trigger():
+        nonlocal next_state_mut
+        sgen.active = True
+        next_state_mut = state_start
 
     sgen.stop = stop
     sgen.trigger = trigger

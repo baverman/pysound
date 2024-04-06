@@ -26,15 +26,15 @@ tri_t = ps.sinsum(4096, ps.tri_partials(20))
 square_t = ps.sinsum(4096, ps.square_partials(20))
 
 def synth(ctl, params):
-    env = ps.env_ahdsr(wait_decay=True)
-    fenv = ps.env_ahdsr(wait_decay=True)
+    env = ps.env_adsr(wait_decay=True)
+    fenv = ps.env_adsr(wait_decay=True)
     params['env'] = ps.menv(env, fenv)
     p1 = ps.phasor()
     p2 = ps.phasor()
     p3 = ps.phasor()
     flt = ps.pole2()
-    # osc = ps.poly_saw()
-    osc = ps.poly_square()
+    osc = ps.poly_saw()
+    # osc = ps.poly_square()
 
     def gen():
         e = env(ctl['attack'], ctl['decay'], ctl['sustain'], ctl['release'])
@@ -44,7 +44,7 @@ def synth(ctl, params):
         p2(f*2**ctl['detune'])
         p3(f*2**(-ctl['detune']))
         sig = (osc(p1, ctl['pwm']) + osc(p2, ctl['pwm']) + osc(p3, ctl['pwm'])) / 3
-        sig = flt(sig * e, ctl['cutoff'] + ctl['fenv'] * fe**2.0, ctl['resonance'])
+        sig = flt(sig * e, ctl['cutoff'] + ctl['fenv'] * fe, ctl['resonance'])
         return sig
 
     return gen

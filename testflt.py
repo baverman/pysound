@@ -209,14 +209,70 @@ def filter_im_res():
 # env.stop()
 # data = gen([data], (env(*args) for _ in range(ps.fps(0.5))))
 #
-p1 = ps.phasor()
-p2 = ps.phasor_new()
-timeit('p1(480)')
-timeit('p2(480)')
+# p1 = ps.phasor()
+# p2 = ps.phasor_new()
+# timeit('p1(480)')
+# timeit('p2(480)')
 # data = gen(p2(480) for _ in range(ps.fps(0.2)))
 # plt.plot(data, '.')
 
+
+def exp_rise(dst, i, size, last, dur, th):
+    r = th ** (1/dur)
+    d = 1 / (th - 1)
+    o = -d
+    p = max(0, (last - o) / d)
+    while p > th and i < size:
+        p = p*r
+        dst[i] = p*d + o
+        i += 1
+    return i
+
+
+def exp_fall(dst, i, size, last, dur, th, a, b):
+    r = th ** (1/dur)
+    d = a - b
+    o = b - th * d
+    p = max(0, (last - o) / d)
+    while p > th and i < size:
+        p = p*r
+        dst[i] = p*d + o
+        i += 1
+    return i
+
+
+# d = [0] * 10000
+# # exp_rise(d, 0, len(d), 0, 10*441, 0.5)
+# exp_fall(d, 0, len(d), 1.5, 10*441, 0.1, 1, 0.5)
+# print(d[:5], d[10*441-5:][:5])
+
+# N = 44100 // 10
+# a = 0.05
+# r = 0.001
+# p = 1 + r
+# a = math.exp(-math.log((1 + r) / r) / N) - 1
+# # for i in range(N):
+# while (p >= r):
+#     d.append(p - r)
+#     p = p + p*a
+
+# ideal = [(1.05 ** i - 1) / 1000 for i in range(100)]
+# plt.plot(d)
+# plt.plot(ideal)
+
 # filter_im_res()
 
+def genv_until_stop(env, *args):
+    for _ in range(ps.fps(3)):
+        if not env.active:
+            break
+        yield env(*args)
+
+env = ps.env_ahdsr(rise_th=0.5, fall_th=0.2)
+args = 500, 100, 0.8, 500
+env.stop(True)
+data = gen(env(*args) for _ in range(ps.fps(0.2)))
+data = gen([data], genv_until_stop(env, *args))
+plt.plot(data)
 
 plt.show()

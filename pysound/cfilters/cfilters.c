@@ -1,6 +1,7 @@
 // gcc -Wall -Wextra -Werror -O3 -fpic -shared -o _cfilters.so cfilters.c
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <math.h>
 
 #include "cfilters.h"
@@ -168,14 +169,6 @@ void poly_square(float dst[], float phase[], float fdelta[], float pw[], size_t 
 }
 
 static inline
-float approach(float val, float target, float speed) {
-    if (target > val)
-        return (target - val) > speed ? val + speed : target;
-    else
-        return (val - target) > speed ? val - speed : target;
-}
-
-static inline
 float calc_step(float start, float end, size_t i, size_t iend) {
     if (i >= iend) {
         return end;
@@ -183,8 +176,7 @@ float calc_step(float start, float end, size_t i, size_t iend) {
     return (end - start) / (float)(iend - i);
 }
 
-
-void env_ahdsr(float dst[], size_t n, env_ahdsr_state *state, float a, float h, float d, float s, float r) {
+void env_adsr(float dst[], size_t n, env_adsr_state *state, float a, float h, float d, float s, float r) {
     size_t acnt = a / 1000.0 * state->srate;
     size_t hcnt = h / 1000.0 * state->srate;
     size_t dcnt = d / 1000.0 * state->srate;
@@ -379,4 +371,140 @@ float phasor(float *restrict dst, float *restrict delta, size_t n, float phase) 
 
     }
     return phase;
+}
+
+
+typedef struct {
+    size_t i;
+    float v;
+    bool done;
+} exp_result;
+
+
+exp_result exp_fill(float dst[], size_t n, size_t i, float last, float dur, float th, float d, float o) {
+    float p = fmax(0, (last - o) / d);
+    if (dur < 1 || p <= th) {
+        return (exp_result){i, last, true};
+    }
+    float r = powf(th, 1.0f/dur);
+    size_t oi = i;
+    while ((p > th) && (i < n)) {
+        p = p*r;
+        dst[i] = p*d + o;
+        i += 1;
+    }
+    return (exp_result){i, i == oi ? last : dst[i-1], p <= th};
+}
+
+exp_result exp_rise(float dst[], size_t n, size_t i, float last, float dur, float th) {
+    float d = 1.0f / (th - 1.0f);
+    float o = -d;
+    return exp_fill(dst, n, i, last, dur, th, d, o);
+}
+
+exp_result exp_fall(float dst[], size_t n, size_t i, float last, float dur, float th, float start, float stop) {
+    float d = start - stop;
+    if ( fabs(d) < 0.00001 ) {
+        return (exp_result){i, last, true};
+    }
+    float o = stop - th * d;
+    return exp_fill(dst, n, i, last, dur, th, d, o);
+}
+
+exp_result line(float dst[], size_t n, size_t i, float value, float target, float speed, bool fill) {
+    float step = 1.0/speed;
+    size_t count, j;
+
+    if (target > value) {
+        count = (target - value) * speed;
+    } else {
+        count = (value - target) * speed;
+        step = -step;
+    }
+
+    for(j=0; (j < count) && (i < n); ++i, ++j) {
+        value += step;
+        dst[i] = value;
+    }
+
+    if ((j >= count) && (i < n)) {
+        dst[i] = value = target;
+        i++;
+        if (fill) {
+            for(; i < n; ++i) {
+                dst[i] = target;
+            }
+        }
+    }
+
+    return (exp_result){i, value, !fill && j >= count};
+}
+
+/*
+* state:
+* 0 - idle
+* 1 - attack
+* 2 - hold
+* 3 - decay
+* 4 - sustain
+* 5 - release
+* 6 - bring to 0
+*/
+void env_adsr_exp(float dst[], size_t n, env_adsr_exp_state *state, float a, float h, float d, float s, float r) {
+    #define spms(dur) (dur / 1000.0f * state->srate)
+
+    exp_result er = {0, state->last};
+    if (state->state == 1) { // attack
+        er = exp_rise(dst, n, er.i, er.v, spms(a), state->rise_th);
+        if (er.done) {
+            state->state = 2;
+            state->hcount = 0;
+        }
+    }
+
+    if (state->state == 2) { // hold
+        size_t hcnt = spms(h);
+        size_t j = state->hcount;
+        for(; (er.i < n) && (j < hcnt) ; ++er.i, ++j) {
+            dst[er.i] = er.v;
+        }
+        state->hcount = j;
+        if (j >= hcnt) {
+            state->state = 3;
+        }
+    }
+
+    if (state->state == 3) { // decay
+        er = exp_fall(dst, n, er.i, er.v, spms(d), state->fall_th, 1.0f, s);
+        if (er.done) {
+            state->state = state->decay_next_state;
+        }
+    }
+
+    if (state->state == 4) { // sustain
+        er = line(dst, n, er.i, er.v, s, spms(state->lspeed), true);
+    }
+
+    if (state->state == 5) { // release
+        er = exp_fall(dst, n, er.i, er.v, spms(r), state->fall_th, s, 0.0f);
+        if (er.done) {
+            state->state = 6;
+        }
+    }
+
+    if (state->state == 6) { // bring to 0
+        er = line(dst, n, er.i, er.v, 0.0f, spms(state->lspeed), false);
+        if (er.done) {
+            state->state = 0;
+        }
+    }
+
+    if (state->state == 0) { // idle
+        er.v = 0.0f;
+        for(; er.i < n; ++er.i) {
+            dst[er.i] = 0.0f;
+        }
+    }
+
+    state->last = er.v;
 }

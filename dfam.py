@@ -75,9 +75,9 @@ class env_factory:
     def __init__(self, ctl, params):
         self.ctl = ctl
         self.params = params
-        self.amp = ps.env_ahdsr(stopped=True)
-        self.vco = ps.env_ahdsr(stopped=True)
-        self.vcf = ps.env_ahdsr(stopped=True)
+        self.amp = ps.env_adsr(stopped=True)
+        self.vco = ps.env_adsr(stopped=True)
+        self.vcf = ps.env_adsr(stopped=True)
 
     def __call__(self, attack, decay, sustain, release, hold=0.0):
         return self.amp(2.0, decay**2.0*10000, 0, 5)
