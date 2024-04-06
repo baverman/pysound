@@ -1,23 +1,41 @@
 # python
 import pysound as ps
-from pysound.gui import GUI, Var
+from pysound.gui import GUI, Var, VarGroup, VSlide, HStack
 from pysound import tntparser
+
+env_vars = HStack(
+    VSlide('attack', 100, 5, 10000, func='exp', label='A'),
+    VSlide('decay', 100, 5, 10000, func='exp', label='D'),
+    VSlide('sustain', 0, 0, 1, label='S'),
+    VSlide('release', 5, 5, 10000, func='exp', label='R'),
+    label = 'Env',
+)
+
+f_vars = HStack(
+    VSlide('cutoff', 1, 0, 1, func='exp', label='F'),
+    VSlide('resonance', 0, 0, 1, label='R'),
+    VSlide('fattack', 100, 5, 10000, func='exp', label='AD'),
+    VSlide('fenv', 0, 0, 1, label='E'),
+    label='Filter',
+)
+
+fx_vars = HStack(
+    VSlide('delay', 0, 0, 2, func='exp'),
+    VSlide('feedback', 0, 0, 1),
+    label='FX',
+)
+
+osc_vars = HStack(
+    VSlide('detune', 0, 0, 0.02),
+    VSlide('pwm', 0, 0, 0.45),
+    label='Osc',
+)
 
 gui = GUI(
     Var('master-volume', 0.2, 0, 1, resolution=0.01),
     Var('tempo', 220, 50, 600),
-    Var('detune', 0, 0, 0.02),
-    Var('pwm', 0, 0, 0.45),
-    Var('attack', 100, 5, 10000, func='exp', label='A'),
-    Var('decay', 100, 5, 10000, func='exp', label='D'),
-    Var('sustain', 0, 0, 1, label='S'),
-    Var('release', 5, 5, 10000, func='exp', label='R'),
-    Var('cutoff', 1, 0, 1, func='exp'),
-    Var('resonance', 0, 0, 1),
-    Var('fattack', 100, 5, 1000, func='exp', label='FA'),
-    Var('fenv', 0, 0, 1, label='FE'),
-    Var('delay', 0, 0, 2, func='exp'),
-    Var('feedback', 0, 0, 1),
+    HStack(osc_vars, env_vars, f_vars),
+    HStack(fx_vars),
     preset_prefix='boo-',
 )
 

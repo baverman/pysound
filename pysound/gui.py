@@ -15,10 +15,18 @@ from tkinter import ttk
 from .core import scream, open_wav, play
 
 
+def iter_controls(controls):
+    for it in controls:
+        if hasattr(it, 'items'):
+            yield from it.items()
+        else:
+            yield it
+
+
 class GUI:
     def __init__(self, *controls, preset_prefix=''):
         self.controls = controls
-        self.ctl = {it.name: it.val for it in controls}
+        self.ctl = {it.name: it.val for it in iter_controls(controls)}
         self.midi_channel = None
         self.preset_prefix = preset_prefix
         self.update_dist = None
@@ -102,7 +110,7 @@ class Var:
             self.rtransform = idfn
 
         if not resolution:
-            resolution = (max-min)/1000;
+            resolution = abs(max-min)/1000;
         self.name = name
         self.label = label or name.replace('-', ' ').title()
         self.val = value
@@ -134,8 +142,13 @@ class Var:
                 rmax, rmin = rmin, rmax
             ctl[self.name] = self.transform(min(rmax, max(float(val), rmin)))
 
-        w = Scale(parent, from_=self.min, to=self.max, orient=self.orient,
-                  resolution=self.resolution, command=cb, label=self.label, length=200)
+        if self.orient == tk.VERTICAL:
+            prange = dict(from_=self.max, to=self.min)
+        else:
+            prange = dict(from_=self.min, to=self.max)
+
+        w = Scale(parent, orient=self.orient, resolution=self.resolution, command=cb,
+                  label=self.label, length=200, **prange)
         w.pysound_set_cb = cb
         w.pysound_init = lambda val: w.set(self.rtransform(val))
         w.set(self.val)
@@ -148,7 +161,7 @@ class Var:
 
 class VSlide(Var):
     def __init__(self, name, value, min, max, resolution=None, **kwargs):
-        super().__init__(name, value, max, min, resolution, orient=tk.VERTICAL, **kwargs)
+        super().__init__(name, value, min, max, resolution, orient=tk.VERTICAL, **kwargs)
 
 
 class Radio:
@@ -185,7 +198,7 @@ class HStack:
         if self.label:
             w = ttk.LabelFrame(parent, text=self.label, height=self.height, padding=self.padding)
         else:
-            w = tk.Frame(parent, height=self.height, padding=self.padding)
+            w = tk.Frame(parent, height=self.height)
 
         for it in self.children:
             it.widget(w, ctl, config).pack(side='left', padx=self.padding//2, fill=tk.Y, expand=1)
@@ -196,11 +209,7 @@ class HStack:
         return iter(self.children)
 
     def items(self):
-        for it in self.children:
-            if hasattr(it, 'items'):
-                yield from it.items()
-            else:
-                yield it
+        return iter_controls(self.children)
 
 
 class VarGroup:

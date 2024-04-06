@@ -3,9 +3,6 @@ import wave
 import random
 import math
 
-from ctypes import byref, memmove
-
-import sdl2
 import numpy as np
 
 from . import cfilters
@@ -542,6 +539,38 @@ def env_adsr(last=0.0, stopped=False, wait_decay=False, rise_th=0.05, fall_th=0.
 
 
 def play(ctl, gen, dist_cb=None, wavfile=None, stop=None):
+    import sounddevice as sd
+    s = sd.OutputStream(FREQ, 0, 'default', 1, dtype='float32', latency=0.015)
+    dc = dcfilter()
+
+    s.start()
+    for frame in gen:
+        if stop and stop.is_set():
+            break
+        frame = dc(frame)
+        frame *= ctl['master-volume']
+
+        if np.max(np.abs(frame)) >= 1:
+            if dist_cb:
+                dist_cb()
+            else:
+                print('Distortion!!!')
+
+        frame[frame > 0.99] = 0.99
+        frame[frame < -0.99] = -0.99
+
+        af = s.write_available
+        if s.write(frame):
+            print('Underflow!!!', af)
+            dist_cb()
+
+    s.stop()
+
+
+def play_sdl(ctl, gen, dist_cb=None, wavfile=None, stop=None):
+    from ctypes import byref, memmove
+    import sdl2
+
     cnt = 0
     max_p = 0
     dc = dcfilter()
