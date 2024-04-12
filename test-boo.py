@@ -20,8 +20,8 @@ f_vars = HStack(
 )
 
 fx_vars = HStack(
-    VSlide('delay', 0, 0, 2, func='exp'),
-    VSlide('feedback', 0, 0, 1),
+    VSlide('delay', 0, 0, 2, func='exp', label='Delay'),
+    VSlide('feedback', 0, 0, 1, label='FB'),
     label='FX',
 )
 
@@ -34,8 +34,7 @@ osc_vars = HStack(
 gui = GUI(
     Var('master-volume', 0.2, 0, 1, resolution=0.01),
     Var('tempo', 220, 50, 600),
-    HStack(osc_vars, env_vars, f_vars),
-    HStack(fx_vars),
+    HStack(osc_vars, env_vars, f_vars, fx_vars),
     preset_prefix='boo-',
 )
 

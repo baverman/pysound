@@ -53,7 +53,7 @@ def phasor_apply(sig, table):
 
 class phasor:
     def __init__(self, phase=0, srate=FREQ):
-        self.phase = 0
+        self.phase = phase
         self.srate = srate
         self.fdelta = ensure_buf(0)
         self.sig = ensure_buf(0)
@@ -98,6 +98,12 @@ def ensure_buf(value, dtype=np.float32, size=None, out=None):
             return out
         return np.full(size or BUFSIZE, value, dtype=dtype)
     return value
+
+
+def pass_buf(buf):
+    if buf is None:
+        buf = np.full(BUFSIZE, 0, dtype=np.float32)
+    return buf
 
 
 def square():
@@ -154,44 +160,47 @@ def line(last=0):
 class mono:
     def __init__(self, ctl, synth, retrigger=True):
         self.ctl = ctl
-        self.params = {'freq': 1, 'volume': 0.0}
-        self.gen = synth(ctl, self.params)
+        self.params = {'freq': 1, 'volume': 0.0, 'mnote': 1}
+        self.gen = ensure_gen(synth(ctl, self.params))
         self.params['env'].stop(False)
-        self.key = None
+        self.mnote = None
         self.vol_line = line()
-        self.freq_stack = []
+        self.stack = []
         self.retrigger = retrigger
 
-    def add(self, key, params):
-        # print('add', key, params, self.freq_stack)
-        if self.key is not None:
-            self.freq_stack.append((self.key, self.params['freq']))
-        self.key = key
-        self.params.update(params)
-        if not self.freq_stack or self.retrigger:
+    def note_on(self, _channel, mnote, volume):
+        if self.mnote is not None:
+            self.stack.append((self.mnote, volume))
+        self.mnote = mnote
+        self.params.update({'mnote': mnote, 'freq': mtof(mnote), 'volume': volume})
+        if not self.stack or self.retrigger:
             self.params['env'].trigger()
 
-    def remove(self, key):
-        # print('remove', key, self.freq_stack)
-        # if self.key == key:
-        #     self.params['env'].stop()
-
-        if self.freq_stack:
-            self.key, f = self.freq_stack.pop()
-            self.params['freq'] = f
+    def remove(self, _channel, mnote):
+        if self.stack:
+            self.mnote, volume = self.stack.pop()
+            self.params['freq'] = mtof(self.mnote)
+            self.params['mnote'] = mnote
+            self.params['volume'] = volume
             if self.retrigger:
                 self.params['env'].trigger()
         else:
-            self.key = None
+            self.mnote = None
             self.params['env'].stop()
 
     def __call__(self, result=None):
-        if result is None:
-            result = np.full(BUFSIZE, 0, dtype=np.float32)
-
+        result = pass_buf(result)
         data = self.gen()
         result += data * self.vol_line(self.params['volume'], 10) * self.ctl.get('volume', 1.0)
         return result
+
+
+def ensure_gen(thing):
+    if hasattr(thing, '__iter__'):
+        def gen():
+            return next(thing, None)
+        return gen
+    return thing
 
 
 class menv:
@@ -213,14 +222,14 @@ class poly:
         self.synth = synth
         self.gens = {}
 
-    def add(self, key, params):
-        ctl = self.ctl
-        gen = self.synth(self.ctl, params)
-        self.gens[key] = params, gen
+    def note_on(self, _channel, mnote, volume):
+        params = {'mnote': mnote, 'freq': mtof(mnote), 'volume': volume}
+        gen = ensure_gen(self.synth(self.ctl, params))
+        self.gens[mnote] = params, gen
 
-    def remove(self, key):
-        if key in self.gens:
-            v = self.gens.pop(key)
+    def note_off(self, _channel, mnote):
+        if mnote in self.gens:
+            v = self.gens.pop(mnote)
             v[0]['env'].stop()
             self.gens[v[1]] = v
 
@@ -229,8 +238,7 @@ class poly:
 
     def __call__(self, result=None):
         toremove = []
-        if result is None:
-            result = np.full(BUFSIZE, 0, dtype=np.float32)
+        result = pass_buf(result)
 
         for key, (p, g) in self.gens.items():
             if p['env'].active:
@@ -252,14 +260,12 @@ class Player:
     def set_voice(self, channel, env_synth):
         self.channels[channel] = env_synth
 
-    def note_on(self, channel, midi_note, volume):
-        # self.note_off(channel, midi_note)
-        es = self.channels[channel]
-        es.add(midi_note, {'freq': mtof(midi_note), 'volume': volume})
+    def note_on(self, channel, mnote, volume):
+        self.channels[channel].note_on(channel, mnote, volume)
 
-    def note_off(self, channel, midi_note):
+    def note_off(self, channel, mnote):
         try:
-            self.channels[channel].remove(midi_note)
+            self.channels[channel].note_off(channel, mnote)
         except KeyError:
             pass
 
@@ -267,8 +273,7 @@ class Player:
         return len(self.channels)
 
     def __call__(self, result=None):
-        if result is None:
-            result = np.full(BUFSIZE, 0, dtype=np.float32)
+        result = pass_buf(result)
         for es in self.channels.values():
             result = es(result)
         return result
@@ -540,11 +545,12 @@ def env_adsr(last=0.0, stopped=False, wait_decay=False, rise_th=0.05, fall_th=0.
 
 def play(ctl, gen, dist_cb=None, wavfile=None, stop=None):
     import sounddevice as sd
-    s = sd.OutputStream(FREQ, 0, 'default', 1, dtype='float32', latency=0.015)
+    s = sd.OutputStream(FREQ, 0, 'default', 1, dtype='float32', latency=0.03)
     dc = dcfilter()
 
     s.start()
-    for frame in gen:
+    g = ensure_gen(gen)
+    while (frame := g()) is not None:
         if stop and stop.is_set():
             break
         frame = dc(frame)
@@ -613,7 +619,7 @@ def play_sdl(ctl, gen, dist_cb=None, wavfile=None, stop=None):
     assert target.freq == FREQ, target.freq
     assert target.size == BUFSIZE*2, target.size
 
-    sdl2.SDL_PauseAudioDevice(dev, 0);
+    sdl2.SDL_PauseAudioDevice(dev, 0)
 
     if stop:
         stop.wait()
