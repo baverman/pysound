@@ -1,8 +1,8 @@
 from unittest.mock import ANY
 import itertools
 
-from tntparser import parse_line, make_context, F, eval_events, mix_events, take_until
-from tonator import Scales
+from pysound.tntparser import parse_line, make_context, F, eval_events, mix_events, take_until
+from pysound.tonator import Scales
 
 
 def I(v):

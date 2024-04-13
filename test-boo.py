@@ -2,6 +2,7 @@
 import pysound as ps
 from pysound.gui import GUI, Var, VarGroup, VSlide, HStack
 from pysound import tntparser
+from pysound import modules as psm
 
 env_vars = HStack(
     VSlide('attack', 100, 5, 10000, func='exp', label='A'),
@@ -70,7 +71,7 @@ def synth(ctl, params):
 def gen(ctl):
     player = ps.Player()
     # player.set_voice(0, mono(ctl, synth, retrigger=True))
-    player.set_voice(0, ps.poly(ctl, synth))
+    player.set_voice(0, psm.arp(ctl, ps.poly(ctl, synth)))
 
     me = tntparser.make_events
     notes = tntparser.mix_events([
