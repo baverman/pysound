@@ -1,14 +1,15 @@
 #MIDI_SOURCE=16:0 python
 from pysound import (
-    GUI, Var, lowpass, phasor, env_ahr, VarGroup, mono,
-    BUFSIZE, FREQ, poly_adsr, Player, midi_player, kbd_player)
+    lowpass, phasor, mono,
+    BUFSIZE, FREQ, env_adsr, Player, midi_player, kbd_player)
+from pysound.gui import GUI, Var, VarGroup
 
 import time
 import tonator
 import tntparser
 
 import sh101
-import dfam
+# import dfam
 
 gui = GUI(
     Var('master-volume', 0.2, 0, 1, resolution=0.01),

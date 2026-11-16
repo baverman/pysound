@@ -1,13 +1,16 @@
 # python
 # Basic rich oscilator
 # https://www.youtube.com/watch?v=I88Cxi86Zu8&list=PLqJgTfn3kSMW3AAAl2liJRKd-7DhZwLlq&index=1
-from pysound import osc, sin_t, fps, mtof, choicer, GUI, Var
-from tonator import Scales
+from dataclasses import dataclass
 
-gui = GUI(
-    Var('tempo', 250, 50, 600),
-    Var('master-volume', 0.5, 0, 1, resolution=0.01),
-)
+from pysound import choicer, fps, mtof, ngui, osc, sin_t
+from pysound.tonator import Scales
+
+
+@dataclass
+class Controls:
+    tempo: float = ngui.field(250, min=50, max=600)
+    master_volume: float = ngui.field(0.5, min=0, max=1, resolution=0.01)
 
 
 def oscs():
@@ -16,7 +19,9 @@ def oscs():
     o3 = osc(sin_t)
     o4 = osc(sin_t)
     o5 = osc(sin_t)
-    return lambda f: (o1(f) + o2(f*1.015) + o3(f*0.503) + o4(f*1.496)*0.5 + o5(f*2.01)*0.25) / 3.75
+    return lambda f: (
+        (o1(f) + o2(f * 1.015) + o3(f * 0.503) + o4(f * 1.496) * 0.5 + o5(f * 2.01) * 0.25) / 3.75
+    )
 
 
 def gen(ctl):
@@ -26,9 +31,12 @@ def gen(ctl):
     s3 = oscs()
     while True:
         f = mtof(60 + next(notes))
-        for _ in range(fps(60/ctl['tempo'])):
-            yield (s1(f) + s2(2*f) + s3(0.5*f)) / 3
+        for _ in range(fps(60 / ctl.tempo)):
+            yield (s1(f) + s2(2 * f) + s3(0.5 * f)) / 3
 
 
 if __name__ == '__main__':
-    gui.play(gen(gui.ctl))
+    ctl = Controls()
+    gui = ngui.GUI(Controls)
+    gui.bind(ctl)
+    gui.play(gen(ctl))

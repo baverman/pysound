@@ -46,12 +46,12 @@ def env_adsr_lin_init(srate, last):
     state.speed = 0
     return state
 
-def env_adsr_exp_init(srate, last):
+def env_adsr_exp_init(srate, last, decay_next_state=4):
     state = ffi.new('env_adsr_exp_state *')
     state.srate = srate
     state.last = last
     state.state = 0
-    state.decay_next_state = 4
+    state.decay_next_state = decay_next_state 
     state.lspeed = 0
     state.rise_th = 0.7;
     state.fall_th = 0.001;

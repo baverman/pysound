@@ -480,9 +480,9 @@ def env_adsr_lin(last=0.0, stopped=False, wait_decay=False):
     return sgen
 
 
-def env_adsr(last=0.0, stopped=False, wait_decay=False, rise_th=0.05, fall_th=0.01, lspeed=10):
+def env_adsr(last=0.0, stopped=False, wait_decay=False, rise_th=0.05, fall_th=0.01, lspeed=10, decay_next_state=4):
     gwait_decay = wait_decay
-    state = cfilters.env_adsr_exp_init(FREQ, last)
+    state = cfilters.env_adsr_exp_init(FREQ, last, decay_next_state)
     state.rise_th = rise_th
     state.fall_th = fall_th
     state.lspeed = lspeed
@@ -554,7 +554,7 @@ def play(ctl, gen, dist_cb=None, wavfile=None, stop=None):
         if stop and stop.is_set():
             break
         frame = dc(frame)
-        frame *= ctl['master-volume']
+        frame *= ctl.master_volume
 
         if np.max(np.abs(frame)) >= 1:
             if dist_cb:
@@ -568,7 +568,6 @@ def play(ctl, gen, dist_cb=None, wavfile=None, stop=None):
         af = s.write_available
         if s.write(frame):
             print('Underflow!!!', af)
-            dist_cb()
 
     s.stop()
 
@@ -591,7 +590,7 @@ def play_sdl(ctl, gen, dist_cb=None, wavfile=None, stop=None):
             return
 
         frame = dc(frame)
-        frame *= ctl['master-volume']
+        frame *= ctl.master_volume
         if np.max(np.abs(frame)) >= 1:
             if dist_cb:
                 dist_cb()
@@ -637,7 +636,7 @@ def play_sdl(ctl, gen, dist_cb=None, wavfile=None, stop=None):
 def render_to_file(fname, ctl, gen, duration):
     with open_wav(fname) as f:
         for _ in range(fps(duration)):
-            frame = next(gen, None) * ctl['master-volume']
+            frame = next(gen, None) * ctl.master_volume
             if frame is None:
                 break
             f.writeframes(frame)

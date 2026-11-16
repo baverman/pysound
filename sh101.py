@@ -2,10 +2,11 @@
 
 import numpy as np
 from pysound import (
-    noise, lowpass, phasor, line, HStack, VSlide, Radio, ensure_buf,
+    noise, lowpass, phasor, line, ensure_buf,
     shold, poly_saw, poly_square, dcfilter, moog, pdvcf, flt12, sinsum, square_partials,
     phasor_apply, bqlp
 )
+from pysound.gui import HStack, VSlide, Radio
 
 square_t = sinsum(2048, square_partials(20))
 
