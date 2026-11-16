@@ -1,34 +1,53 @@
 # python
 # Polyphony
 # https://www.youtube.com/watch?v=jGgu77pCfHU&list=PLqJgTfn3kSMW3AAAl2liJRKd-7DhZwLlq&index=3
-from pysound import GUI, Var, mtof, osc, sin_t, fps, choicer, poly, env_ahr
-from tonator import Scales
+from dataclasses import dataclass
 
-gui = GUI(
-    Var('tempo', 250, 50, 600),
-    Var('attack', 8, 1, 100),
-    Var('hold', 70, 1, 1000),
-    Var('release', 1200, 1, 2000),
-    Var('master-volume', 0.2, 0, 1, resolution=0.01),
-)
+from pysound import choicer, env_ahr, fps, mtof, ngui, osc, sin_t, pass_buf
+from pysound.ngui import field, pow2
+from pysound.tonator import Scales
+
+
+@dataclass
+class Controls:
+    master_volume: float = field(0.2, range=(0, 1), resolution=0.01)
+    tempo: float = field(250, range=(50, 600), nl=True)
+    attack: float = field(8, range=(1, 100), map=pow2)
+    hold: float = field(70, range=(1, 1000), map=pow2)
+    release: float = field(1200, range=(1, 2000), map=pow2)
 
 
 def synth(ctl, f):
     o = osc(sin_t)
-    line = env_ahr(ctl['attack'], ctl['hold'], ctl['release'])
-    while line.running:
-        yield o(f) * line()**4
+    env = env_ahr()
+    while env.active:
+        e = env(ctl.attack, ctl.hold, ctl.release)
+        yield o(f) * e
+
+def mix(voices):
+    active = []
+    result = pass_buf(None)
+    for voice in voices:
+        frame = next(voice, None)
+        if frame is not None:
+            active.append(voice)
+            result += frame
+    voices[:] = active
+    return result
 
 
 def gen(ctl):
     notes = choicer(it.value for it in Scales.major.notes)
-    p = poly()
+    voices = []
     while True:
         f = mtof(60 + next(notes))
-        p.add(synth(ctl, f))
-        for _ in range(fps(60/ctl['tempo'])):
-            yield p()
+        voices.append(synth(ctl, f))
+        for _ in range(fps(60 / ctl.tempo)):
+            yield mix(voices)
 
 
 if __name__ == '__main__':
-    gui.play(gen(gui.ctl))
+    ctl = ngui.make(Controls)
+    gui = ngui.GUI(Controls)
+    gui.bind(ctl)
+    gui.play(gen(ctl))

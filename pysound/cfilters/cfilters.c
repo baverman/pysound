@@ -168,76 +168,6 @@ void poly_square(float dst[], float phase[], float fdelta[], float pw[], size_t 
   }
 }
 
-static inline
-float calc_step(float start, float end, size_t i, size_t iend) {
-    if (i >= iend) {
-        return end;
-    }
-    return (end - start) / (float)(iend - i);
-}
-
-void env_adsr(float dst[], size_t n, env_adsr_state *state, float a, float h, float d, float s, float r) {
-    size_t acnt = a / 1000.0 * state->srate;
-    size_t hcnt = h / 1000.0 * state->srate;
-    size_t dcnt = d / 1000.0 * state->srate;
-    size_t rcnt = r / 1000.0 * state->srate;
-
-    float val = state->last;
-    size_t i = state->scount, j=0;
-
-    // 0 trigger active
-    // 1 trigger released, should continue to play a/h/d and then state 2
-    // 2 trigger released, should stop anyway and then release
-    // 3 play finished
-
-    if (state->state < 2) {
-        float step = calc_step(val, 1.0, i, acnt);
-        for(; i<acnt && j<n; i++, j++) {
-            val += step;
-            dst[j] = val;
-        }
-
-        for(; i<acnt+hcnt && j<n; i++, j++) {
-            dst[j] = 1.0;
-        }
-
-        step = calc_step(val, s, i, acnt+hcnt+dcnt);
-        for(; i<acnt+hcnt+dcnt && j<n; i++, j++) {
-            val += step;
-            dst[j] = val;
-        }
-    }
-
-    if (state->state == 1 && j < n) {
-        state->state = 2;
-        state->scount = 0;
-        state->release_level = val;
-        i = 0;
-    }
-
-    if (state->state == 0) {
-        for(;j<n; j++) {
-            dst[j] = s;
-        }
-    }
-
-    if (state->state == 2) {
-        float step = calc_step(val, 0.0, i, rcnt);
-        for(; i<rcnt && j<n; i++, j++) {
-            val += step;
-            dst[j] = val;
-        }
-        for(;j<n; j++) {
-            dst[j] = 0.0;
-        }
-        if (i >= rcnt) {
-            state->state = 3;
-        }
-    }
-
-    state->last = val;
-    state->scount = i;
-}
 
 
 void pdvcf(float dst[], const float src[], size_t n,
@@ -374,137 +304,200 @@ float phasor(float *restrict dst, float *restrict delta, size_t n, float phase) 
 }
 
 
-typedef struct {
-    size_t i;
-    float v;
-    bool done;
-} exp_result;
-
-
-exp_result exp_fill(float dst[], size_t n, size_t i, float last, float dur, float th, float d, float o) {
-    float p = fmax(0, (last - o) / d);
-    if (dur < 1 || p <= th) {
-        return (exp_result){i, last, true};
-    }
-    float r = powf(th, 1.0f/dur);
-    size_t oi = i;
-    while ((p > th) && (i < n)) {
-        p = p*r;
-        dst[i] = p*d + o;
-        i += 1;
-    }
-    return (exp_result){i, i == oi ? last : dst[i-1], p <= th};
-}
-
-exp_result exp_rise(float dst[], size_t n, size_t i, float last, float dur, float th) {
-    float d = 1.0f / (th - 1.0f);
-    float o = -d;
-    return exp_fill(dst, n, i, last, dur, th, d, o);
-}
-
-exp_result exp_fall(float dst[], size_t n, size_t i, float last, float dur, float th, float start, float stop) {
-    float d = start - stop;
-    if ( fabs(d) < 0.00001 ) {
-        return (exp_result){i, last, true};
-    }
-    float o = stop - th * d;
-    return exp_fill(dst, n, i, last, dur, th, d, o);
-}
-
-exp_result line(float dst[], size_t n, size_t i, float value, float target, float speed, bool fill) {
-    float step = 1.0/speed;
-    size_t count, j;
-
-    if (target > value) {
-        count = (target - value) * speed;
-    } else {
-        count = (value - target) * speed;
-        step = -step;
-    }
-
-    for(j=0; (j < count) && (i < n); ++i, ++j) {
-        value += step;
-        dst[i] = value;
-    }
-
-    if ((j >= count) && (i < n)) {
-        dst[i] = value = target;
-        i++;
-        if (fill) {
-            for(; i < n; ++i) {
-                dst[i] = target;
-            }
-        }
-    }
-
-    return (exp_result){i, value, !fill && j >= count};
-}
-
 /*
-* state:
-* 0 - idle
+* stage:
+* 0 - off
 * 1 - attack
 * 2 - hold
 * 3 - decay
 * 4 - sustain
 * 5 - release
-* 6 - bring to 0
+*
+* stop:
+* 0 - sustain is enabled
+* 1 - complete the decay, then release
+* 2 - skip the decay, release after the hold
 */
-void env_adsr_exp(float dst[], size_t n, env_adsr_exp_state *state, float a, float h, float d, float s, float r) {
-    #define spms(dur) (dur / 1000.0f * state->srate)
+#define ENV_OFF 0
+#define ENV_ATTACK 1
+#define ENV_HOLD 2
+#define ENV_DECAY 3
+#define ENV_SUSTAIN 4
+#define ENV_RELEASE 5
 
-    exp_result er = {0, state->last};
-    if (state->state == 1) { // attack
-        er = exp_rise(dst, n, er.i, er.v, spms(a), state->rise_th);
-        if (er.done) {
-            state->state = 2;
-            state->hcount = 0;
+static size_t env_samples(const env_state *state, float ms) {
+    float count = ms / 1000.0f * (float)state->srate;
+    return count > 0.0f ? (size_t)count : 0;
+}
+
+static void env_enter(env_state *state, int stage) {
+    state->stage = stage;
+    state->elapsed = 0;
+}
+
+
+typedef struct {
+    size_t count;
+    bool done;
+} env_result;
+
+
+/* Move last toward target over dur samples.
+* Writes at most avail samples and reports how many and whether dur was reached.
+*/
+static env_result env_seg(float dst[], size_t avail, env_state *state,
+                          float target, size_t dur, float k) {
+    size_t left = state->elapsed < dur ? dur - state->elapsed : 0;
+
+    if (left == 0) {
+        state->last = target;
+        return (env_result){0, true};
+    }
+
+    size_t count = avail < left ? avail : left;
+    float v = state->last;
+    float r = 1.0f;
+    float add = (target - v) / (float)left;
+
+    if (k != 0.0f) {
+        float step = -k / (float)dur;
+        float q = expf(step * (float)left);
+        r = expf(step);
+        add = (target - q * v) * -expm1f(step) / -expm1f(step * (float)left);
+    }
+
+    float lo = fminf(v, target);
+    float hi = fmaxf(v, target);
+
+    for (size_t j = 0; j < count; ++j) {
+        v = fminf(fmaxf(v * r + add, lo), hi);
+        dst[j] = v;
+    }
+
+    state->elapsed += count;
+    bool done = state->elapsed >= dur;
+    state->last = done ? target : v;
+    return (env_result){count, done};
+}
+
+
+/* Hold the current level for dur samples. */
+static env_result env_hold(float dst[], size_t avail, env_state *state, size_t dur) {
+    size_t left = state->elapsed < dur ? dur - state->elapsed : 0;
+    size_t count = avail < left ? avail : left;
+    float last = state->last;
+
+    for (size_t j = 0; j < count; ++j) {
+        dst[j] = last;
+    }
+
+    state->elapsed += count;
+    return (env_result){count, state->elapsed >= dur};
+}
+
+
+/* Sustain holds the live level. When it is changed, last glides to it. */
+static size_t env_sustain(float dst[], size_t avail, env_state *state, float s) {
+    float v = state->last;
+    float span = s - v;
+    size_t dur = (size_t)(fabsf(span) * (float)env_samples(state, state->glide));
+
+    if (dur == 0) {
+        state->last = s;
+        for (size_t j = 0; j < avail; ++j) {
+            dst[j] = s;
+        }
+        return avail;
+    }
+
+    size_t count = avail < dur ? avail : dur;
+    float k = span > 0.0f ? state->rise_k : state->fall_k;
+    float step = k != 0.0f ? -k / (float)dur : 0.0f;
+    float r = k != 0.0f ? expf(step) : 1.0f;
+    float add = (s - v) / (float)dur;
+
+    if (k != 0.0f) {
+        float q = expf(step * (float)dur);
+        add = (s - q * v) * -expm1f(step) / -expm1f(step * (float)dur);
+    }
+
+    float lo = fminf(v, s);
+    float hi = fmaxf(v, s);
+
+    for (size_t j = 0; j < count; ++j) {
+        v = fminf(fmaxf(v * r + add, lo), hi);
+        dst[j] = v;
+    }
+
+    state->last = count == dur ? s : v;
+    return count;
+}
+
+
+void env_adsr_exp(float dst[], size_t n, env_state *state,
+                  float a, float h, float d, float s, float r) {
+    size_t i = 0;
+
+    while (i < n) {
+        switch (state->stage) {
+        case ENV_ATTACK: {
+            env_result res = env_seg(dst + i, n - i, state, 1.0f,
+                                     env_samples(state, a), state->rise_k);
+            i += res.count;
+            if (res.done) {
+                env_enter(state, ENV_HOLD);
+            }
+            break;
+        }
+
+        case ENV_HOLD: {
+            env_result res = env_hold(dst + i, n - i, state, env_samples(state, h));
+            i += res.count;
+            if (res.done) {
+                env_enter(state, ENV_DECAY);
+            }
+            break;
+        }
+
+        case ENV_DECAY: {
+            if (state->stop >= 2) {
+                env_enter(state, ENV_SUSTAIN);
+                break;
+            }
+            env_result res = env_seg(dst + i, n - i, state, s,
+                                     env_samples(state, d), state->fall_k);
+            i += res.count;
+            if (res.done) {
+                env_enter(state, ENV_SUSTAIN);
+            }
+            break;
+        }
+
+        case ENV_SUSTAIN:
+            if (state->stop != 0) {
+                env_enter(state, ENV_RELEASE);
+            } else {
+                i += env_sustain(dst + i, n - i, state, s);
+            }
+            break;
+
+        case ENV_RELEASE: {
+            env_result res = env_seg(dst + i, n - i, state, 0.0f,
+                                     env_samples(state, r), state->fall_k);
+            i += res.count;
+            if (res.done) {
+                env_enter(state, ENV_OFF);
+            }
+            break;
+        }
+
+        default:
+            state->last = 0.0f;
+            for (; i < n; ++i) {
+                dst[i] = 0.0f;
+            }
+            break;
         }
     }
 
-    if (state->state == 2) { // hold
-        size_t hcnt = spms(h);
-        size_t j = state->hcount;
-        for(; (er.i < n) && (j < hcnt) ; ++er.i, ++j) {
-            dst[er.i] = er.v;
-        }
-        state->hcount = j;
-        if (j >= hcnt) {
-            state->state = 3;
-        }
-    }
-
-    if (state->state == 3) { // decay
-        er = exp_fall(dst, n, er.i, er.v, spms(d), state->fall_th, 1.0f, s);
-        if (er.done) {
-            state->state = state->decay_next_state;
-        }
-    }
-
-    if (state->state == 4) { // sustain
-        er = line(dst, n, er.i, er.v, s, spms(state->lspeed), true);
-    }
-
-    if (state->state == 5) { // release
-        er = exp_fall(dst, n, er.i, er.v, spms(r), state->fall_th, s, 0.0f);
-        if (er.done) {
-            state->state = 6;
-        }
-    }
-
-    if (state->state == 6) { // bring to 0
-        er = line(dst, n, er.i, er.v, 0.0f, spms(state->lspeed), false);
-        if (er.done) {
-            state->state = 0;
-        }
-    }
-
-    if (state->state == 0) { // idle
-        er.v = 0.0f;
-        for(; er.i < n; ++er.i) {
-            dst[er.i] = 0.0f;
-        }
-    }
-
-    state->last = er.v;
 }

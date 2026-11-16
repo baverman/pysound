@@ -40,30 +40,20 @@ void poly_saw(float *restrict dst, float *restrict phase, float *restrict delta,
 void poly_square(float dst[], float phase[], float fdelta[], float pw[], size_t n);
 
 
-typedef struct {
-    size_t scount;
-    float last;
-    int state;
-    size_t srate;
-    float speed;
-    float release_level;
-} env_adsr_state;
-
-void env_adsr(float dst[], size_t n, env_adsr_state *state, float a, float h, float d, float s, float r);
 
 float phasor(float *restrict dst, float *restrict delta, size_t n, float phase);
 
 
 typedef struct {
-    size_t srate;
+    int srate;
+    int stage;
+    int stop;
+    size_t elapsed;
     float last;
-    int state;
-    int decay_next_state;
-    float lspeed;
-    float rise_th;
-    float fall_th;
-    size_t hcount;
-} env_adsr_exp_state;
+    float rise_k;
+    float fall_k;
+    float glide;
+} env_state;
 
 
-void env_adsr_exp(float dst[], size_t n, env_adsr_exp_state *state, float a, float h, float d, float s, float r);
+void env_adsr_exp(float dst[], size_t n, env_state *state, float a, float h, float d, float s, float r);

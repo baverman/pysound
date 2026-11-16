@@ -92,7 +92,7 @@ class osc:
 
 
 def ensure_buf(value, dtype=np.float32, size=None, out=None):
-    if type(value) in (int, float, np.float64):
+    if type(value) in (int, float, np.float64, np.float32):
         if out is not None:
             out[:] = value
             return out
@@ -402,7 +402,7 @@ def dcfilter(cutoff=20):
 
 def delay(max_duration=0.5):
     buf = cfilters.init_ring_buf(sps(max_duration))
-    result = np.empty(BUFSIZE, dtype=np.float32)
+    result = np.zeros(BUFSIZE, dtype=np.float32)
     def process(sig, delay, feedback):
         shift = ensure_buf(delay, np.int32)
         cfilters.delmix(buf, result, sig, shift, feedback)
@@ -440,106 +440,68 @@ class Buffer:
         return self.buf[p:p+size]
 
 
-def env_adsr_lin(last=0.0, stopped=False, wait_decay=False):
+def env_adsr(
+    last=0.0,
+    stopped=False,
+    wait_decay=False,
+    stop=0,
+    rise_k=1.0,
+    fall_k=1.0,
+    glide=10,
+):
     gwait_decay = wait_decay
-    state = cfilters.env_adsr_lin_init(FREQ, last)
-    if stopped:
-        state.state = 3
+    state = cfilters.env_init(FREQ, last, rise_k, fall_k, glide)
+    state.stop = stop
+    if not stopped:
+        state.stage = cfilters.STAGE_ATTACK
+
     zero = np.zeros(BUFSIZE, dtype=np.float32)
     result = np.zeros(BUFSIZE, dtype=np.float32)
 
     def sgen(attack, decay, sustain, release, hold=0.0):
-        if state.state == 3:
+        if state.stage == cfilters.STAGE_OFF:
             sgen.active = False
             return zero
-        cfilters.lib.env_adsr(addr(result), BUFSIZE, state, attack, hold, decay, sustain, release)
+
+        cfilters.lib.env_adsr_exp(addr(result), BUFSIZE, state, attack, hold, decay, sustain, release)
+        sgen.active = state.stage != cfilters.STAGE_OFF
         sgen.last = state.last
         return result
 
     sgen.active = not stopped
 
-    def stop(wait_decay=None):
+    def do_stop(wait_decay=None):
         if wait_decay is None:
             wait_decay = gwait_decay
 
-        if state.state == 0:
-            if wait_decay:
-                state.state = 1
-            else:
-                state.state = 2
-                state.scount = 0
-                state.release_level = state.last
+        # if state.stage in (cfilters.STAGE_OFF, cfilters.STAGE_RELEASE):
+        #     return
 
-    def trigger():
+        state.stop = 1 if wait_decay else 2
+
+    def do_trigger():
         sgen.active = True
-        state.state = 0
-        state.scount = 0
+        state.stage = cfilters.STAGE_ATTACK
+        state.elapsed = 0
+        state.stop = stop
 
-    sgen.stop = stop
-    sgen.trigger = trigger
+    sgen.stop = do_stop
+    sgen.trigger = do_trigger
     return sgen
 
 
-def env_adsr(last=0.0, stopped=False, wait_decay=False, rise_th=0.05, fall_th=0.01, lspeed=10):
-    gwait_decay = wait_decay
-    state = cfilters.env_adsr_exp_init(FREQ, last)
-    state.rise_th = rise_th
-    state.fall_th = fall_th
-    state.lspeed = lspeed
-    if stopped:
-        state.state = 0
-    else:
-        state.state = 1
+def env_ahr(last=0.0, rise_k=1, fall_k=1, glide=10.0):
+    gen = env_adsr(last, stop=2, rise_k=rise_k, fall_k=fall_k, glide=glide)
 
-    zero = np.zeros(BUFSIZE, dtype=np.float32)
-    result = np.zeros(BUFSIZE, dtype=np.float32)
-    next_state_mut = None
-
-    def sgen(attack, decay, sustain, release, hold=0.0):
-        nonlocal next_state_mut
-
-        if state.state == 0:
-            sgen.active = False
-            return zero
-
-        if next_state_mut:
-            next_state_mut()
-            next_state_mut = None
-
-        cfilters.lib.env_adsr_exp(addr(result), BUFSIZE, state, attack, hold, decay, sustain, release)
-        sgen.last = state.last
+    def sgen(attack, hold, release):
+        result = gen(attack, 0.0, 0.0, release, hold=hold)
+        sgen.active = gen.active
+        sgen.last = gen.last
         return result
 
-    sgen.active = not stopped
-
-    def state_stop_with_decay():
-        state.decay_next_state = 5
-
-    def state_stop():
-        state.state = 5
-
-    def state_start():
-        state.state = 1
-        state.decay_next_state = 4
-
-    def stop(wait_decay=None):
-        nonlocal next_state_mut
-        if wait_decay is None:
-            wait_decay = gwait_decay
-
-        if state.state > 0:
-            if wait_decay and state.state < 4:
-                next_state_mut = state_stop_with_decay
-            else:
-                next_state_mut = state_stop
-
-    def trigger():
-        nonlocal next_state_mut
-        sgen.active = True
-        next_state_mut = state_start
-
-    sgen.stop = stop
-    sgen.trigger = trigger
+    sgen.active = gen.active
+    sgen.stop = gen.stop
+    sgen.trigger = gen.trigger
     return sgen
 
 
@@ -554,7 +516,7 @@ def play(ctl, gen, dist_cb=None, wavfile=None, stop=None):
         if stop and stop.is_set():
             break
         frame = dc(frame)
-        frame *= ctl['master-volume']
+        frame *= ctl.master_volume
 
         if np.max(np.abs(frame)) >= 1:
             if dist_cb:
@@ -568,7 +530,6 @@ def play(ctl, gen, dist_cb=None, wavfile=None, stop=None):
         af = s.write_available
         if s.write(frame):
             print('Underflow!!!', af)
-            dist_cb()
 
     s.stop()
 
@@ -591,7 +552,7 @@ def play_sdl(ctl, gen, dist_cb=None, wavfile=None, stop=None):
             return
 
         frame = dc(frame)
-        frame *= ctl['master-volume']
+        frame *= ctl.master_volume
         if np.max(np.abs(frame)) >= 1:
             if dist_cb:
                 dist_cb()
@@ -637,7 +598,7 @@ def play_sdl(ctl, gen, dist_cb=None, wavfile=None, stop=None):
 def render_to_file(fname, ctl, gen, duration):
     with open_wav(fname) as f:
         for _ in range(fps(duration)):
-            frame = next(gen, None) * ctl['master-volume']
+            frame = next(gen, None) * ctl.master_volume
             if frame is None:
                 break
             f.writeframes(frame)

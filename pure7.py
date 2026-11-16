@@ -1,65 +1,61 @@
 # python
 # Synth strings
 # https://www.youtube.com/watch?v=XVcQuI5Urdw&list=PLqJgTfn3kSMW3AAAl2liJRKd-7DhZwLlq&index=7
-from pysound import (
-    GUI, Var, mtof, osc, sin_t, fps, choicer, poly, env_ahr,
-    lowpass, square, dcfilter)
-from tonator import Scales
+from dataclasses import dataclass
 
-gui = GUI(
-    Var('tempo', 75, 50, 600),
-    Var('attack', 50, 1, 100),
-    Var('hold', 350, 1, 1000),
-    Var('release', 1500, 1, 2000),
-    Var('modulation-freq', 4, 0, 30, resolution=0.1),
-    Var('modulation-depth', 0.3, 0, 1, resolution=0.01),
-    Var('master-volume', 0.2, 0, 1, resolution=0.01),
-)
+from pure3 import mix
+from pysound import choicer, dcfilter, env_ahr, fps, lowpass, mtof, ngui, osc, sin_t, square
+from pysound.ngui import field, pow2
+from pysound.tonator import Scales
+
+
+@dataclass
+class Controls:
+    master_volume: float = field(0.2, range=(0, 1), resolution=0.01)
+    tempo: float = field(75, range=(50, 600), nl=True)
+    attack: float = field(50, range=(1, 100), map=pow2)
+    hold: float = field(350, range=(1, 1000), map=pow2)
+    release: float = field(1500, range=(1, 2000), map=pow2)
+    modulation_freq: float = field(4, range=(0, 30), resolution=0.1)
+    modulation_depth: float = field(0.3, range=(0, 1), resolution=0.01)
 
 
 def square_mod():
     o = square()
     wm = osc(sin_t)
     flt = lowpass()
+
     def sig(f, mfreq, mdepth):
         duty = 0.5 + mdepth * wm(mfreq) / 2.0
         return flt(o(f, duty), 0.3)
+
     return sig
-
-
-def dcblock():
-    import numpy as np
-    mean = 0
-    def do(sig):
-        nonlocal mean
-        newmean = np.mean(sig)
-        sig = sig - newmean
-        mean = newmean
-        return sig
-    return do
 
 
 def synth(ctl, f):
     o1 = square_mod()
     o2 = square_mod()
-    line = env_ahr(ctl['attack'], ctl['hold'], ctl['release'])
-    mfreq = ctl['modulation-freq']
-    mdepth = ctl['modulation-depth']
-    while line.running:
-        sig = (o1(f, mfreq, mdepth) + o2(f*1.004, mfreq, mdepth)) / 2.0
-        yield sig * line()**4
+    line = env_ahr()
+    while line.active:
+        mfreq = ctl.modulation_freq
+        mdepth = ctl.modulation_depth
+        sig = (o1(f, mfreq, mdepth) + o2(f * 1.004, mfreq, mdepth)) / 2.0
+        yield sig * line(ctl.attack, ctl.hold, ctl.release)
 
 
 def gen(ctl):
     notes = choicer(it.value for it in Scales.major.notes)
-    p = poly()
     dc = dcfilter()
+    voices = []
     while True:
         f = mtof(60 + next(notes))
-        p.add(synth(ctl, f))
-        for _ in range(fps(60/ctl['tempo'])):
-            yield dc(p())
+        voices.append(synth(ctl, f))
+        for _ in range(fps(60 / ctl.tempo)):
+            yield dc(mix(voices))
 
 
 if __name__ == '__main__':
-    gui.play(gen(gui.ctl))
+    ctl = ngui.make(Controls)
+    gui = ngui.GUI(Controls)
+    gui.bind(ctl)
+    gui.play(gen(ctl))
