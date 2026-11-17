@@ -97,6 +97,7 @@ class FieldConfig:
     widget: Any = None
     group: Group | None = None
     nl: bool = False
+    choices: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -166,37 +167,87 @@ def _control_from_value(
     return _clamp_unit(float(transformer.inverse(normalized)))
 
 
+def _build_slider(
+    parent: Any,
+    info: FieldInfo,
+    command: ChangeCallback,
+    *,
+    orientation: str,
+) -> Control:
+    config = info.config
+    minimum, maximum = _range_for(info)
+    control_minimum, control_maximum = _control_range(info)
+    resolution = _effective_resolution(config)
+    frame = ctk.CTkFrame(parent, fg_color='transparent')
+    label = ctk.CTkLabel(frame, text=info.label)
+    label.pack(fill='x')
+
+    steps = None
+    if resolution is not None:
+        steps = max(1, round(abs(control_maximum - control_minimum) / resolution))
+
+    def changed(control: float) -> None:
+        command(_value_from_control(control, minimum, maximum, config.map))
+
+    options: dict[str, Any] = {}
+    if orientation == 'vertical':
+        options['height'] = 120
+
+    slider = ctk.CTkSlider(
+        frame,
+        orientation=orientation,
+        from_=control_minimum,
+        to=control_maximum,
+        number_of_steps=steps,
+        command=changed,
+        **options,
+    )
+    slider.pack(fill='x' if orientation == 'horizontal' else 'y', expand=True)
+
+    def set_value(value: float) -> None:
+        slider.set(_control_from_value(value, minimum, maximum, config.map))
+
+    return Control(frame, set_value)
+
+
 class Scale:
-    """Default float-field widget."""
+    """Horizontal float slider."""
 
     @classmethod
     def build(cls, parent: Any, info: FieldInfo, command: ChangeCallback) -> Control:
-        config = info.config
-        minimum, maximum = _range_for(info)
-        control_minimum, control_maximum = _control_range(info)
-        resolution = _effective_resolution(config)
+        return _build_slider(parent, info, command, orientation='horizontal')
+
+
+class VScale:
+    """Vertical float slider."""
+
+    @classmethod
+    def build(cls, parent: Any, info: FieldInfo, command: ChangeCallback) -> Control:
+        return _build_slider(parent, info, command, orientation='vertical')
+
+
+class Radio:
+    """Choice control which stores the index of the selected label."""
+
+    @classmethod
+    def build(cls, parent: Any, info: FieldInfo, command: ChangeCallback) -> Control:
+        labels = info.config.choices
+        if not labels:
+            raise ValueError(f'{_format_path(info.path)}: choices must not be empty')
+
         frame = ctk.CTkFrame(parent, fg_color='transparent')
-        label = ctk.CTkLabel(frame, text=info.label, anchor='w')
-        label.pack(fill='x')
+        ctk.CTkLabel(frame, text=info.label).pack(fill='x')
 
-        steps = None
-        if resolution is not None:
-            steps = max(1, round(abs(control_maximum - control_minimum) / resolution))
+        def changed(label: str) -> None:
+            command(float(labels.index(label)))
 
-        def changed(control: float) -> None:
-            command(_value_from_control(control, minimum, maximum, config.map))
-
-        slider = ctk.CTkSlider(
-            frame,
-            from_=control_minimum,
-            to=control_maximum,
-            number_of_steps=steps,
-            command=changed,
+        buttons = ctk.CTkSegmentedButton(
+            frame, values=list(labels), orientation='vertical', command=changed
         )
-        slider.pack(fill='x', expand=True)
+        buttons.pack(fill='y', expand=True)
 
         def set_value(value: float) -> None:
-            slider.set(_control_from_value(value, minimum, maximum, config.map))
+            buttons.set(labels[int(value)])
 
         return Control(frame, set_value)
 
@@ -412,6 +463,7 @@ def field[T](
     range: tuple[float, float] | None = None,
     map: Transformer | None = None,
     resolution: float | None = None,
+    choices: tuple[str, ...] | None = None,
     label: str | None = None,
     hidden: bool = False,
     widget: Any = None,
@@ -426,6 +478,7 @@ def field(
     range: tuple[float, float] | None = None,
     map: Transformer | None = None,
     resolution: float | None = None,
+    choices: tuple[str, ...] | None = None,
     label: str | None = None,
     hidden: bool = False,
     widget: Any = None,
@@ -440,6 +493,7 @@ def field(
     range: tuple[float, float] | None = None,
     map: Transformer | None = None,
     resolution: float | None = None,
+    choices: tuple[str, ...] | None = None,
     label: str | None = None,
     hidden: bool = False,
     widget: Any = None,
@@ -453,12 +507,15 @@ def field(
         raise ValueError('range values must be different')
     if resolution is not None and resolution <= 0:
         raise ValueError('resolution must be positive')
+    if choices is not None and not choices:
+        raise ValueError('choices must not be empty')
 
     config = FieldConfig(
         min=minimum,
         max=maximum,
         map=map,
         resolution=resolution,
+        choices=choices,
         label=label,
         hidden=hidden,
         widget=widget,
@@ -656,18 +713,31 @@ class GUI[T]:
                 new_line = True
 
     def _build_control(self, parent: Any, info: FieldInfo) -> None:
-        if info.type is not float:
-            raise TypeError(
-                f'{_format_path(info.path)} has unsupported type {info.type!r}; '
-                'only float fields are currently supported'
-            )
+        choices = info.config.choices
+        convert: Callable[[float], Any]
+
+        if choices is None:
+            if info.type is not float:
+                raise TypeError(
+                    f'{_format_path(info.path)} has unsupported type {info.type!r}; '
+                    'only float fields are currently supported'
+                )
+            convert = float
+            factory = info.config.widget or Knob
+        else:
+            if info.type is not int:
+                raise TypeError(
+                    f'{_format_path(info.path)} uses choices and must be an int field'
+                )
+            convert = int
+            factory = info.config.widget or Radio
 
         def changed(value: float) -> None:
             if self._syncing or self._state is None:
                 return
-            _set_path(self._state, info.path, float(value))
+            _set_path(self._state, info.path, convert(value))
 
-        control = _build_control(info.config.widget or Knob, parent, info, changed)
+        control = _build_control(factory, parent, info, changed)
         _pack(control.widget, parent, expand=False)
         self._controls[info.path] = control
         self.widgets[_format_path(info.path)] = control.widget
@@ -806,9 +876,16 @@ def _pack(
     orientation = getattr(parent, '_ngui_orientation', 'vertical')
     if orientation == 'horizontal':
         if expand:
-            widget.pack(side='left', fill='both', expand=True, padx=padding, pady=padding)
+            widget.pack(
+                side='left',
+                fill='both',
+                expand=True,
+                anchor='n',
+                padx=padding,
+                pady=padding,
+            )
         else:
-            widget.pack(side='left', padx=padding, pady=padding)
+            widget.pack(side='left', anchor='n', padx=padding, pady=padding)
     else:
         gap = getattr(parent, '_ngui_gap', None)
         if gap is None:

@@ -1,25 +1,21 @@
 #MIDI_SOURCE=16:0 python
-from pysound import (
-    lowpass, phasor, mono,
-    BUFSIZE, FREQ, env_adsr, Player, midi_player, kbd_player)
-from pysound.gui import GUI, Var, VarGroup
-
-import time
-import tonator
-import tntparser
+from dataclasses import dataclass
 
 import sh101
 # import dfam
+from pysound import BUFSIZE, FREQ, Player, kbd_player, mono, ngui, tntparser
+from pysound.ngui import field
+from pysound.ngui import field
 
-gui = GUI(
-    Var('master-volume', 0.2, 0, 1, resolution=0.01),
-    Var('tempo', 220, 50, 600),
-    # VarGroup('dfam-1', dfam.svars),
-    VarGroup('sh101-1', sh101.svars, midi_channel=0),
-    # VarGroup('voice-2', svars, midi_channel=1),
-    # VarGroup('voice-3', svars, midi_channel=2),
-    preset_prefix='sh101-',
-)
+
+@dataclass(kw_only=True)
+class Controls:
+    master_volume: float = field(0.2, range=(0, 1), resolution=0.01)
+    tempo: float = field(220, range=(50, 600), nl=True)
+    # dfam: dfam.Dfam
+    sh101: sh101.Sh101
+    # voice_2: sh101.Sh101
+    # voice_3: sh101.Sh101
 
 
 def gen(ctl):
@@ -36,22 +32,21 @@ def gen(ctl):
     taker = tntparser.take_until(notes.loop())
 
     player = Player()
-    # player.set_voice(0, mono(ctl['dfam-1'], dfam.synth, env_exp=2, env_factory=dfam.env_factory))
-    # player.set_voice(0, mono(ctl['sh101-1'], sh101.synth, env_exp=2))
-    player.set_voice(0, mono(ctl['sh101-1'], sh101.synth, env_exp=2))
-    # player.set_voice(0, mono(ctl['voice-1'], sh101.synth, env_exp=1))
-    # player.set_voice(1, mono(ctl['voice-2'], sh101.synth, env_exp=1))
-    # player.set_voice(1, poly_adsr(ctl['voice-2'], synth))
+    # player.set_voice(0, mono(ctl.dfam, dfam.synth))
+    player.set_voice(0, mono(ctl.sh101, sh101.synth))
+    # player.set_voice(0, mono(ctl.voice_1, sh101.synth))
+    # player.set_voice(1, mono(ctl.voice_2, sh101.synth))
 
     seq = tntparser.player_event_adapter(FREQ, BUFSIZE)
     kp = kbd_player(channel=0)
     while True:
-        midi_player(ctl, player)
         kp(ctl, player)
-        # seq(player, taker, ctl['tempo'])
+        # seq(player, taker, ctl.tempo)
         yield player()
 
 
 if __name__ == '__main__':
-    # gui.play(gen(gui.ctl), output='/tmp/boo.wav')
-    gui.play(gen(gui.ctl))
+    ctl = ngui.make(Controls)
+    gui = ngui.GUI(Controls)
+    gui.bind(ctl)
+    gui.play(gen(ctl))

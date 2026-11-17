@@ -215,6 +215,8 @@ class mono:
             self.mnote = None
             self.params.env.stop()
 
+    note_off = remove
+
     def __call__(self, result=None):
         result = pass_buf(result)
         data = self.gen()
