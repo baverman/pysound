@@ -1,47 +1,61 @@
 # python
+from dataclasses import dataclass
+
 import pysound as ps
-from pysound.gui import GUI, Var, VarGroup, VSlide, HStack
-from pysound import tntparser
 from pysound import modules as psm
+from pysound import ngui, tntparser
+from pysound.ngui import field, pow2
 
-env_vars = HStack(
-    VSlide('attack', 100, 5, 10000, func='exp', label='A'),
-    VSlide('decay', 100, 5, 10000, func='exp', label='D'),
-    VSlide('sustain', 0, 0, 1, label='S'),
-    VSlide('release', 5, 5, 10000, func='exp', label='R'),
-    label = 'Env',
-)
 
-f_vars = HStack(
-    VSlide('cutoff', 1, 0, 1, func='exp', label='F'),
-    VSlide('resonance', 0, 0, 1, label='R'),
-    VSlide('fattack', 100, 5, 10000, func='exp', label='AD'),
-    VSlide('fenv', 0, 0, 1, label='E'),
-    label='Filter',
-)
+@dataclass
+class Osc:
+    detune: float = field(0, range=(0, 0.02))
+    pwm: float = field(0, range=(0, 0.45), nl=True)
 
-fx_vars = HStack(
-    VSlide('delay', 0, 0, 2, func='exp', label='Delay'),
-    VSlide('feedback', 0, 0, 1, label='FB'),
-    label='FX',
-)
 
-osc_vars = HStack(
-    VSlide('detune', 0, 0, 0.02),
-    VSlide('pwm', 0, 0, 0.45),
-    label='Osc',
-)
+@dataclass
+class Env:
+    attack: float = field(100, range=(5, 10000), map=pow2)
+    decay: float = field(100, range=(5, 10000), map=pow2)
+    sustain: float = field(0, range=(0, 1))
+    release: float = field(5, range=(5, 10000), map=pow2)
 
-gui = GUI(
-    Var('master-volume', 0.2, 0, 1, resolution=0.01),
-    Var('tempo', 220, 50, 600),
-    HStack(osc_vars, env_vars, f_vars, fx_vars),
-    preset_prefix='boo-',
-)
+
+@dataclass
+class Filter:
+    cutoff: float = field(1, range=(0, 1), map=pow2)
+    resonance: float = field(0, range=(0, 1))
+    fattack: float = field(100, range=(5, 10000), map=pow2)
+    fenv: float = field(0, range=(0, 1))
+
+
+@dataclass
+class Fx:
+    delay: float = field(0, range=(0, 2), map=pow2)
+    feedback: float = field(0, range=(0, 1))
+
+
+@dataclass
+class Arp:
+    length: float = field(7, range=(1, 16), resolution=1)
+    div: float = field(4, range=(1, 16), resolution=1)
+    octaves: float = field(1, range=(0, 4), resolution=1)
+
+
+@dataclass(kw_only=True)
+class Controls:
+    master_volume: float = field(0.2, range=(0, 1), resolution=0.01)
+    tempo: float = field(220, range=(50, 600), nl=True)
+    osc: Osc
+    env: Env
+    filter: Filter
+    fx: Fx
+    arp: Arp
 
 
 tri_t = ps.sinsum(4096, ps.tri_partials(20))
 square_t = ps.sinsum(4096, ps.square_partials(20))
+
 
 def synth(ctl, params):
     env = ps.env_adsr(wait_decay=True)
@@ -55,14 +69,14 @@ def synth(ctl, params):
     # osc = ps.poly_square()
 
     def gen():
-        e = env(ctl['attack'], ctl['decay'], ctl['sustain'], ctl['release'])
-        fe = fenv(ctl['fattack'], ctl['fattack'], 0, 0)
+        e = env(ctl.env.attack, ctl.env.decay, ctl.env.sustain, ctl.env.release)
+        fe = fenv(ctl.filter.fattack, ctl.filter.fattack, 0, 0)
         f = params['freq']
         p1(f)
-        p2(f*2**ctl['detune'])
-        p3(f*2**(-ctl['detune']))
-        sig = (osc(p1, ctl['pwm']) + osc(p2, ctl['pwm']) + osc(p3, ctl['pwm'])) / 3
-        sig = flt(sig * e, ctl['cutoff'] + ctl['fenv'] * fe, ctl['resonance'])
+        p2(f * 2 ** ctl.osc.detune)
+        p3(f * 2 ** (-ctl.osc.detune))
+        sig = (osc(p1, ctl.osc.pwm) + osc(p2, ctl.osc.pwm) + osc(p3, ctl.osc.pwm)) / 3
+        sig = flt(sig * e, ctl.filter.cutoff + ctl.filter.fenv * fe, ctl.filter.resonance)
         return sig
 
     return gen
@@ -71,7 +85,7 @@ def synth(ctl, params):
 def gen(ctl):
     player = ps.Player()
     # player.set_voice(0, mono(ctl, synth, retrigger=True))
-    player.set_voice(0, psm.arp(ctl, ps.poly(ctl, synth)))
+    player.set_voice(0, psm.arp(ctl.arp, ctl, ps.poly(ctl, synth)))
 
     me = tntparser.make_events
     notes = tntparser.mix_events([
@@ -85,11 +99,13 @@ def gen(ctl):
     seq = tntparser.player_event_adapter(ps.FREQ, ps.BUFSIZE)
     while True:
         kp(ctl, player)
-        # seq(player, taker, ctl['tempo'])
-        yield delay(player(), ps.sps(ctl['delay']), ctl['feedback'])
+        # seq(player, taker, ctl.tempo)
+        yield delay(player(), ps.sps(ctl.fx.delay), ctl.fx.feedback)
         # yield player()
 
 
 if __name__ == '__main__':
-    # gui.play(gen(gui.ctl), output='/tmp/boo.wav')
-    gui.play(gen(gui.ctl))
+    ctl = ngui.make(Controls)
+    gui = ngui.GUI(Controls)
+    gui.bind(ctl)
+    gui.play(gen(ctl))

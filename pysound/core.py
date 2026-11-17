@@ -1,7 +1,8 @@
+import math
+import random
 import time
 import wave
-import random
-import math
+from typing import Protocol
 
 import numpy as np
 
@@ -14,6 +15,18 @@ FREQ = 48000
 BUFSIZE = 512
 
 tau = np.pi * 2
+
+
+class MasterVolume(Protocol):
+    """State carrying the output gain."""
+
+    master_volume: float
+
+
+class Tempo(Protocol):
+    """State carrying the tempo in beats per minute."""
+
+    tempo: float
 
 
 def choicer(values):
@@ -243,7 +256,7 @@ class poly:
         for key, (p, g) in self.gens.items():
             if p['env'].active:
                 data = g()
-                result += data * p['volume'] * self.ctl.get('volume', 1.0)
+                result += data * p['volume'] * getattr(self.ctl, 'volume', 1.0)
             else:
                 toremove.append(key)
 
@@ -297,7 +310,7 @@ def kbd_player(channel=0, octave=4, volume=1.0):
     def step(ctl, player):
         nonlocal state
         old_state = set(state)
-        pressed = set(it for it in ctl.get('keys', []) if it in keys.KEYNOTES)
+        pressed = set(it for it in getattr(ctl, 'keys', []) if it in keys.KEYNOTES)
         state = pressed
 
         for key in old_state - pressed:

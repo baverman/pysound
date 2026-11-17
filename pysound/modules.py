@@ -1,5 +1,4 @@
 from pysound import core
-from pysound.gui import HStack, VSlide
 
 
 class EventSlice:
@@ -20,8 +19,9 @@ class EventSlice:
 
 
 class arp:
-    def __init__(self, ctl, player):
+    def __init__(self, ctl, tempo, player):
         self.ctl = ctl
+        self.tempo = tempo
         self.player = player
         self.scnt = 0
         self.pcnt = 0
@@ -39,10 +39,10 @@ class arp:
         self.nchanged = True
 
     def make_events(self, notes):
-        bl = self.ctl.get('arp_length', 7)
-        bd = self.ctl.get('arp_div', 4)
-        ol = self.ctl.get('arp_octaves', 1)
-        tempo = self.ctl.get('tempo', 120)
+        bl = int(self.ctl.length)
+        bd = int(self.ctl.div)
+        ol = int(self.ctl.octaves)
+        tempo = self.tempo.tempo
         bscnt = int(60 / tempo * core.FREQ * 4 / bd)
         result = []
         s = 0
@@ -62,7 +62,7 @@ class arp:
     def __call__(self, result=None):
         result = core.pass_buf(result)
 
-        if (not self.es or self.scnt < core.BUFSIZE) and (self.nchanged or self.oldtempo != self.ctl.get('tempo', 120)):
+        if (not self.es or self.scnt < core.BUFSIZE) and (self.nchanged or self.oldtempo != self.tempo.tempo):
             n = self.notes[:]
             if n:
                 self.nchanged = False

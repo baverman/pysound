@@ -63,6 +63,30 @@ invpow3 = InvPower(3)
 
 
 @dataclass(frozen=True)
+class Exp:
+    """Exponential shape, shared with the envelope curvature.
+
+    k > 0 is a fast start, k < 0 is a slow start, k = 0 is linear.
+    """
+
+    k: float
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.k):
+            raise ValueError('k must be finite')
+
+    def __call__(self, value: float) -> float:
+        if self.k == 0:
+            return float(value)
+        return float(math.expm1(-self.k * value) / math.expm1(-self.k))
+
+    def inverse(self, value: float) -> float:
+        if self.k == 0:
+            return float(value)
+        return float(-math.log1p(value * math.expm1(-self.k)) / self.k)
+
+
+@dataclass(frozen=True)
 class FieldConfig:
     min: float | None = None
     max: float | None = None
@@ -485,6 +509,22 @@ class GUI[T]:
         self._state = state
         if self.root is not None:
             self._load_state()
+            self._bind_keyboard()
+
+    def _bind_keyboard(self) -> None:
+        """Keep the hidden ``keys`` field in sync with the keyboard."""
+
+        if self.window is None:
+            return
+
+        from . import keys
+
+        def refresh(_event: Any) -> None:
+            if self._state is not None:
+                setattr(self._state, 'keys', keys.keyboard_state())
+
+        self.window.bind('<KeyPress>', refresh)
+        self.window.bind('<KeyRelease>', refresh)
 
     def build(self, parent: Any | None = None) -> GUI[T]:
         if self.root is not None:
@@ -505,6 +545,7 @@ class GUI[T]:
         self._build_dataclass(self.description, self.root, ())
         if self._state is not None:
             self._load_state()
+            self._bind_keyboard()
         return self
 
     def widget(self, path: str) -> Any:
