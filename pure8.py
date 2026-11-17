@@ -2,12 +2,11 @@
 # Plucked strings
 # https://www.youtube.com/watch?v=5rVveOpGsWo&list=PLqJgTfn3kSMW3AAAl2liJRKd-7DhZwLlq&index=8
 from dataclasses import dataclass
-
 import numpy as np
 
 from pysound import (
-    FREQ, choicer, dcfilter, delay, ensure_buf, env_adsr, fps, lowpass, mtof, ngui,
-    seed_noise)
+    FREQ, choicer, dcfilter, delay, ensure_buf, fps, lowpass, mtof, ngui,
+    seed_noise, env_ahr)
 from pysound.ngui import field, pow2
 from pysound.tonator import Scales
 
@@ -26,14 +25,14 @@ class Controls:
 def synth(ctl, f):
     n = seed_noise(1)
     flt = lowpass()
-    eg = env_adsr()
-    e = env_adsr()
+    eg = env_ahr()
+    e = env_ahr()
     d = delay(0.5)
     delays = ensure_buf(FREQ / f, np.int32)
     while True:
-        sig = n() * eg(0, 0, 0, 0, 30)
+        sig = n() * eg(0, 30, 0)
         sig = d(sig, delays, ctl.feedback)
-        sig = sig * e(ctl.attack, ctl.release, 0, 0)
+        sig = sig * e(ctl.attack, 0, ctl.release)
         yield flt(sig, ctl.cutoff)
 
 
