@@ -40,6 +40,26 @@ class Power:
 
 
 pow2 = Power(2)
+pow3 = Power(3)
+
+
+@dataclass(frozen=True)
+class InvPower:
+    exponent: float
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.exponent) or self.exponent <= 0:
+            raise ValueError('exponent must be a positive finite number')
+
+    def __call__(self, value: float) -> float:
+        return float(1 - (1 - value) ** self.exponent)
+
+    def inverse(self, value: float) -> float:
+        return float(1 - (1 - value) ** (1 / self.exponent))
+
+
+invpow2 = InvPower(2)
+invpow3 = InvPower(3)
 
 
 @dataclass(frozen=True)

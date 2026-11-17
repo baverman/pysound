@@ -7,18 +7,18 @@ import numpy as np
 from pysound import (
     FREQ, choicer, dcfilter, delay, ensure_buf, fps, lowpass, mtof, ngui,
     seed_noise, env_ahr)
-from pysound.ngui import field, pow2
+from pysound.ngui import field, pow2, invpow3
 from pysound.tonator import Scales
 
 
 @dataclass
 class Controls:
     master_volume: float = field(0.2, range=(0, 1), resolution=0.01)
-    tempo: float = field(240, range=(50, 600), nl=True)
+    tempo: float = field(120, range=(50, 600), nl=True)
     attack: float = field(15, range=(1, 100), map=pow2)
     hold: float = field(300, range=(1, 1000), map=pow2)
     release: float = field(2000, range=(1, 4000), map=pow2)
-    feedback: float = field(0.99, range=(0.8, 1), resolution=0.0001)
+    feedback: float = field(0.99, range=(0.8, 1), map=invpow3)
     cutoff: float = field(0.72, range=(0, 1), resolution=0.01)
 
 
