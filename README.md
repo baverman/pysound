@@ -1,5 +1,7 @@
 # Simple sound processing/synthesis using Python, NumPy and cffi.
 
+![PySound](images/screenshot.png)
+
 Here I will try to reimplement PD from scratch using numpy to be able to perform
 realtime audio.
 
