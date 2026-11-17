@@ -60,7 +60,7 @@ square_t = ps.sinsum(4096, ps.square_partials(20))
 def synth(ctl, params):
     env = ps.env_adsr(wait_decay=True)
     fenv = ps.env_adsr(wait_decay=True)
-    params['env'] = ps.menv(env, fenv)
+    params.env = ps.menv(env, fenv)
     p1 = ps.phasor()
     p2 = ps.phasor()
     p3 = ps.phasor()
@@ -71,7 +71,7 @@ def synth(ctl, params):
     def gen():
         e = env(ctl.env.attack, ctl.env.decay, ctl.env.sustain, ctl.env.release)
         fe = fenv(ctl.filter.fattack, ctl.filter.fattack, 0, 0)
-        f = params['freq']
+        f = params.freq
         p1(f)
         p2(f * 2 ** ctl.osc.detune)
         p3(f * 2 ** (-ctl.osc.detune))

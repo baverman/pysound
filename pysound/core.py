@@ -1,8 +1,10 @@
+from dataclasses import dataclass
+from typing import Any, Protocol
+
 import math
 import random
 import time
 import wave
-from typing import Protocol
 
 import numpy as np
 
@@ -170,12 +172,22 @@ def line(last=0):
     return pgen
 
 
+@dataclass
+class Voice:
+    """Per-note parameters handed to a synth."""
+
+    mnote: int = 0
+    freq: float = 0.0
+    volume: float = 0.0
+    env: Any = None
+
+
 class mono:
     def __init__(self, ctl, synth, retrigger=True):
         self.ctl = ctl
-        self.params = {'freq': 1, 'volume': 0.0, 'mnote': 1}
+        self.params = Voice(freq=1, mnote=1)
         self.gen = ensure_gen(synth(ctl, self.params))
-        self.params['env'].stop(False)
+        self.params.env.stop(False)
         self.mnote = None
         self.vol_line = line()
         self.stack = []
@@ -185,26 +197,28 @@ class mono:
         if self.mnote is not None:
             self.stack.append((self.mnote, volume))
         self.mnote = mnote
-        self.params.update({'mnote': mnote, 'freq': mtof(mnote), 'volume': volume})
+        self.params.mnote = mnote
+        self.params.freq = mtof(mnote)
+        self.params.volume = volume
         if not self.stack or self.retrigger:
-            self.params['env'].trigger()
+            self.params.env.trigger()
 
     def remove(self, _channel, mnote):
         if self.stack:
             self.mnote, volume = self.stack.pop()
-            self.params['freq'] = mtof(self.mnote)
-            self.params['mnote'] = mnote
-            self.params['volume'] = volume
+            self.params.freq = mtof(self.mnote)
+            self.params.mnote = mnote
+            self.params.volume = volume
             if self.retrigger:
-                self.params['env'].trigger()
+                self.params.env.trigger()
         else:
             self.mnote = None
-            self.params['env'].stop()
+            self.params.env.stop()
 
     def __call__(self, result=None):
         result = pass_buf(result)
         data = self.gen()
-        result += data * self.vol_line(self.params['volume'], 10) * self.ctl.get('volume', 1.0)
+        result += data * self.vol_line(self.params.volume, 10) * getattr(self.ctl, 'volume', 1.0)
         return result
 
 
@@ -236,14 +250,14 @@ class poly:
         self.gens = {}
 
     def note_on(self, _channel, mnote, volume):
-        params = {'mnote': mnote, 'freq': mtof(mnote), 'volume': volume}
+        params = Voice(mnote=mnote, freq=mtof(mnote), volume=volume)
         gen = ensure_gen(self.synth(self.ctl, params))
         self.gens[mnote] = params, gen
 
     def note_off(self, _channel, mnote):
         if mnote in self.gens:
             v = self.gens.pop(mnote)
-            v[0]['env'].stop()
+            v[0].env.stop()
             self.gens[v[1]] = v
 
     def __len__(self):
@@ -254,9 +268,9 @@ class poly:
         result = pass_buf(result)
 
         for key, (p, g) in self.gens.items():
-            if p['env'].active:
+            if p.env.active:
                 data = g()
-                result += data * p['volume'] * getattr(self.ctl, 'volume', 1.0)
+                result += data * p.volume * getattr(self.ctl, 'volume', 1.0)
             else:
                 toremove.append(key)
 

@@ -1,32 +1,40 @@
 # python
-from functools import partial
-from pysound import osc, sin_t, fps, mtof, choicer, GUI, Var, env_ahr, mono
-from tonator import Scales
+from dataclasses import dataclass
 
-gui = GUI(
-    Var('tempo', 250, 50, 600),
-    Var('master-volume', 0.5, 0, 1, resolution=0.01),
-)
+import pysound as ps
+from pysound import choicer, fps, mono, ngui, osc, sin_t
+from pysound.ngui import field
+from pysound.tonator import Scales
 
 
-def synth(o, last):
-    line = env_ahr(15, 100, 1000, last)
-    while True:
-        yield o() * line() ** 2, line.last
+@dataclass
+class Controls:
+    master_volume: float = field(0.5, range=(0, 1), resolution=0.01)
+    tempo: float = field(250, range=(50, 600), nl=True)
+
+
+def synth(ctl, params):
+    o = osc(sin_t)
+    env = ps.env_ahr()
+    params.env = env
+
+    def gen():
+        return o(params.freq) * env(15, 100, 1000) ** 2
+
+    return gen
 
 
 def gen(ctl):
     notes = choicer(it.value for it in Scales.major.notes)
-    m = mono()
-    o = osc(sin_t)
+    player = mono(ctl, synth)
     while True:
-        f = mtof(60 + next(notes))
-        m.set(synth(partial(o, f), m.last))
-        for _ in range(fps(60/ctl['tempo'])):
-            yield m()
+        player.note_on(0, 60 + next(notes), 1.0)
+        for _ in range(fps(60 / ctl.tempo)):
+            yield player()
 
 
 if __name__ == '__main__':
-    # from pysound import render_to_file
-    # render_to_file('/tmp/boo.wav', gui.ctl, gen(gui.ctl), 1)
-    gui.play(gen(gui.ctl))
+    ctl = ngui.make(Controls)
+    gui = ngui.GUI(Controls)
+    gui.bind(ctl)
+    gui.play(gen(ctl))
