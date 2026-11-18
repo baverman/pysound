@@ -1,0 +1,393 @@
+from __future__ import annotations
+
+import math
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
+
+import customtkinter as ctk  # type: ignore[import-untyped]
+
+from .controls import (
+    FieldInfo,
+    Knob,
+    Radio,
+    Scale,
+    VScale,
+    _clamp_unit,
+    _control_from_value,
+    _control_range,
+    _effective_resolution,
+    _range_for,
+    _value_from_control,
+)
+
+ChangeCallback = Callable[[float], None]
+
+
+@dataclass
+class Control:
+    widget: Any
+    set_value: Callable[[float], None]
+
+
+@dataclass
+class Container:
+    widget: Any
+    content: Any
+
+
+def _build_slider(
+    parent: Any,
+    info: FieldInfo,
+    command: ChangeCallback,
+    *,
+    orientation: str,
+) -> Control:
+    config = info.config
+    minimum, maximum = _range_for(info)
+    control_minimum, control_maximum = _control_range(info)
+    resolution = _effective_resolution(config)
+    frame = ctk.CTkFrame(parent, fg_color='transparent')
+    label = ctk.CTkLabel(frame, text=info.label)
+    label.pack(fill='x')
+
+    steps = None
+    if resolution is not None:
+        steps = max(1, round(abs(control_maximum - control_minimum) / resolution))
+
+    def changed(control: float) -> None:
+        command(_value_from_control(control, minimum, maximum, config.map))
+
+    options: dict[str, Any] = {}
+    if orientation == 'vertical':
+        options['height'] = 120
+
+    slider = ctk.CTkSlider(
+        frame,
+        orientation=orientation,
+        from_=control_minimum,
+        to=control_maximum,
+        number_of_steps=steps,
+        command=changed,
+        **options,
+    )
+    slider.pack(fill='x' if orientation == 'horizontal' else 'y', expand=True)
+
+    def set_value(value: float) -> None:
+        slider.set(_control_from_value(value, minimum, maximum, config.map))
+
+    return Control(frame, set_value)
+
+
+def _build_radio(parent: Any, info: FieldInfo, command: ChangeCallback) -> Control:
+    labels = info.config.choices
+    if not labels:
+        raise ValueError(f'{_format_path(info.path)}: choices must not be empty')
+
+    frame = ctk.CTkFrame(parent, fg_color='transparent')
+    ctk.CTkLabel(frame, text=info.label).pack(fill='x')
+
+    def changed(label: str) -> None:
+        command(float(labels.index(label)))
+
+    buttons = ctk.CTkSegmentedButton(
+        frame, values=list(labels), orientation='vertical', command=changed
+    )
+    buttons.pack(fill='y', expand=True)
+
+    def set_value(value: float) -> None:
+        buttons.set(labels[int(value)])
+
+    return Control(frame, set_value)
+
+
+def _build_knob(parent: Any, info: FieldInfo, command: ChangeCallback) -> Control:
+    knob = _Knob(parent, info, command)
+    return Control(knob.frame, knob.set)
+
+
+class _Knob:
+    def __init__(
+        self,
+        parent: Any,
+        info: FieldInfo,
+        command: ChangeCallback,
+        size: int = 64,
+        value_gap: int = 6,
+    ) -> None:
+        self.minimum, self.maximum = _range_for(info)
+        self.map = info.config.map
+        self.control_minimum, self.control_maximum = _control_range(info)
+        self.resolution = _effective_resolution(info.config)
+        self.command = command
+        self.size = size
+        self.value_gap = value_gap
+        self.value = self.minimum
+        self._drag_y = 0
+        self._drag_control = self.control_minimum
+
+        self.frame = ctk.CTkFrame(parent, fg_color='transparent')
+        ctk.CTkLabel(self.frame, text=info.label).pack(fill='x')
+        self.scaling = ctk.ScalingTracker.get_widget_scaling(self.frame)
+        canvas_size = round(size * self.scaling)
+        value_gap_size = round(value_gap * self.scaling)
+        self.canvas = ctk.CTkCanvas(
+            self.frame,
+            width=canvas_size,
+            height=canvas_size + value_gap_size,
+            highlightthickness=0,
+            background=_widget_background(parent),
+        )
+        self.canvas.pack()
+
+        self.canvas.bind('<ButtonPress-1>', self._press)
+        self.canvas.bind('<B1-Motion>', self._drag)
+        self.canvas.bind('<MouseWheel>', self._wheel)
+        self.canvas.bind('<Button-4>', self._wheel)
+        self.canvas.bind('<Button-5>', self._wheel)
+        self._draw()
+
+    def set(self, value: float) -> None:
+        self.value = self._clamp_value(float(value))
+        self._draw()
+
+    def _set_from_user(self, control: float) -> None:
+        control = self._quantize(self._clamp_control(control))
+        value = _value_from_control(control, self.minimum, self.maximum, self.map)
+        self.set(value)
+        self.command(value)
+
+    def _press(self, event: Any) -> None:
+        self._drag_y = event.y_root
+        self._drag_control = _control_from_value(self.value, self.minimum, self.maximum, self.map)
+
+    def _drag(self, event: Any) -> None:
+        distance = self._drag_y - event.y_root
+        span = self.control_maximum - self.control_minimum
+        self._set_from_user(self._drag_control + distance * span / (150 * self.scaling))
+
+    def _wheel(self, event: Any) -> None:
+        direction = 1 if getattr(event, 'delta', 0) > 0 or getattr(event, 'num', 0) == 4 else -1
+        span = self.control_maximum - self.control_minimum
+        step = self.resolution or span / 100
+        control = _control_from_value(self.value, self.minimum, self.maximum, self.map)
+        self._set_from_user(control + direction * step)
+
+    def _clamp_value(self, value: float) -> float:
+        low, high = sorted((self.minimum, self.maximum))
+        return min(high, max(low, value))
+
+    def _clamp_control(self, value: float) -> float:
+        low, high = sorted((self.control_minimum, self.control_maximum))
+        return min(high, max(low, value))
+
+    def _quantize(self, value: float) -> float:
+        if self.resolution is None:
+            return value
+        steps = round((value - self.control_minimum) / self.resolution)
+        return self.control_minimum + steps * self.resolution
+
+    def _draw(self) -> None:
+        control = _control_from_value(self.value, self.minimum, self.maximum, self.map)
+        normalized = (control - self.control_minimum) / (
+            self.control_maximum - self.control_minimum
+        )
+        normalized = _clamp_unit(normalized)
+        scaling = self.scaling
+        size = self.size * scaling
+        arc_width = round(size / 12)
+        padding = math.ceil(arc_width / 2) + 1
+        bounds = (padding, padding, size - padding, size - padding)
+        track = _appearance_color(ctk.ThemeManager.theme['CTkProgressBar']['fg_color'])
+        accent = _appearance_color(ctk.ThemeManager.theme['CTkProgressBar']['progress_color'])
+        indicator = _appearance_color(ctk.ThemeManager.theme['CTkLabel']['text_color'])
+
+        self.canvas.delete('all')
+        self.canvas.create_arc(
+            *bounds,
+            start=225,
+            extent=-270,
+            style='arc',
+            outline=track,
+            width=arc_width,
+        )
+        self.canvas.create_arc(
+            *bounds,
+            start=225,
+            extent=-270 * normalized,
+            style='arc',
+            outline=accent,
+            width=arc_width,
+        )
+
+        center = size / 2
+        radius = size / 2 - 18 * scaling
+        angle = math.radians(225 - 270 * normalized)
+        end_x = center + math.cos(angle) * radius
+        end_y = center - math.sin(angle) * radius
+        center_size = size / 20
+        self.canvas.create_oval(
+            center - center_size,
+            center - center_size,
+            center + center_size,
+            center + center_size,
+            fill=indicator,
+            outline='',
+        )
+        self.canvas.create_line(
+            center,
+            center,
+            end_x,
+            end_y,
+            fill=indicator,
+            width=round(size / 30),
+            capstyle='round',
+        )
+        font = ctk.ThemeManager.theme['CTkFont']
+        self.canvas.create_text(
+            center,
+            size - 10 * scaling + self.value_gap * scaling,
+            text=self._format_value(),
+            fill=indicator,
+            font=(font['family'], -round(font['size'] * scaling)),
+        )
+
+    def _format_value(self) -> str:
+        if abs(self.value) > 9999:
+            return str(round(self.value))
+        return f'{self.value:.4g}'
+
+
+class Panel:
+    """Default container for nested dataclasses and groups."""
+
+    @classmethod
+    def build(
+        cls,
+        parent: Any,
+        *,
+        label: str | None = None,
+        orientation: str = 'horizontal',
+        padding: int = 8,
+        gap: int = 12,
+        border_width: int = 1,
+        **kwargs: Any,
+    ) -> Container:
+        frame = ctk.CTkFrame(parent, fg_color='transparent')
+        body = ctk.CTkFrame(frame, border_width=border_width, **kwargs)
+        title_height = 18
+        body.pack(
+            fill='both',
+            expand=True,
+            pady=(title_height // 2 if label else 0, 0),
+        )
+        if label:
+            ctk.CTkLabel(
+                frame,
+                text=f' {label} ',
+                height=title_height,
+                anchor='w',
+                fg_color=body.cget('fg_color'),
+            ).place(x=padding, y=0)
+        content = ctk.CTkFrame(body, fg_color='transparent')
+        content.pack(fill='both', expand=True, padx=padding, pady=padding)
+        content._gui_orientation = orientation
+        content._gui_gap = gap
+        return Container(frame, content)
+
+
+def build_control(
+    factory: Any,
+    parent: Any,
+    info: FieldInfo,
+    command: ChangeCallback,
+) -> Control:
+    if factory is Scale:
+        return _build_slider(parent, info, command, orientation='horizontal')
+    if factory is VScale:
+        return _build_slider(parent, info, command, orientation='vertical')
+    if factory is Radio:
+        return _build_radio(parent, info, command)
+    if factory is Knob:
+        return _build_knob(parent, info, command)
+
+    builder = getattr(factory, 'build', None)
+    result = builder(parent, info, command) if builder else factory(parent, info, command)
+    if isinstance(result, Control):
+        return result
+    if hasattr(result, 'set'):
+        return Control(result, result.set)
+    raise TypeError('field widget factory must return Control or an object with set()')
+
+
+def build_container(
+    factory: Any,
+    parent: Any,
+    *args: Any,
+    **options: Any,
+) -> Container:
+    builder = getattr(factory, 'build', None)
+    result = builder(parent, *args, **options) if builder else factory(parent, *args, **options)
+    if isinstance(result, Container):
+        return result
+    return Container(result, result)
+
+
+def new_row(parent: Any) -> Any:
+    row = ctk.CTkFrame(parent, fg_color='transparent')
+    row._gui_orientation = 'horizontal'
+    row.pack(fill='x')
+    return row
+
+
+def pack(
+    widget: Any,
+    parent: Any,
+    *,
+    padding: int = 4,
+    expand: bool = True,
+) -> None:
+    orientation = getattr(parent, '_gui_orientation', 'vertical')
+    if orientation == 'horizontal':
+        if expand:
+            widget.pack(
+                side='left',
+                fill='both',
+                expand=True,
+                anchor='n',
+                padx=padding,
+                pady=padding,
+            )
+        else:
+            widget.pack(side='left', anchor='n', padx=padding, pady=padding)
+    else:
+        gap = getattr(parent, '_gui_gap', None)
+        if gap is None:
+            widget.pack(fill='x', padx=padding, pady=padding)
+        else:
+            pady = (gap, 0) if parent.pack_slaves() else 0
+            widget.pack(fill='x', padx=padding, pady=pady)
+
+
+def _appearance_color(color: Any) -> str:
+    if isinstance(color, (tuple, list)):
+        index = 0 if ctk.get_appearance_mode() == 'Light' else 1
+        return str(color[index])
+    return str(color)
+
+
+def _widget_background(widget: Any) -> str:
+    current = widget
+    while current is not None:
+        try:
+            color = current.cget('fg_color')
+        except (AttributeError, ValueError):
+            color = None
+        if color not in (None, 'transparent'):
+            return _appearance_color(color)
+        current = getattr(current, 'master', None)
+    return _appearance_color(ctk.ThemeManager.theme['CTk']['fg_color'])
+
+
+def _format_path(path: tuple[str, ...]) -> str:
+    return '.'.join(path)

@@ -3,9 +3,9 @@ from dataclasses import dataclass
 
 import sh101
 # import dfam
-from pysound import BUFSIZE, FREQ, Player, kbd_player, mono, ngui, tntparser
-from pysound.ngui import field
-from pysound.ngui import field
+from pysound import BUFSIZE, FREQ, Player, gui, kbd_player, mono, tntparser
+from pysound.gui import field
+from pysound.gui import field
 
 
 @dataclass(kw_only=True)
@@ -46,7 +46,7 @@ def gen(ctl):
 
 
 if __name__ == '__main__':
-    ctl = ngui.make(Controls)
-    gui = ngui.GUI(Controls)
-    gui.bind(ctl)
-    gui.play(gen(ctl))
+    ctl = gui.make(Controls)
+    app = gui.App(Controls)
+    app.bind(ctl)
+    app.play(gen(ctl))

@@ -5,8 +5,8 @@ import itertools
 from dataclasses import dataclass
 
 from pure3 import mix
-from pysound import env_ahr, fps, lowpass, mtof, ngui, phasor
-from pysound.ngui import field, pow2
+from pysound import env_ahr, fps, gui, lowpass, mtof, phasor
+from pysound.gui import field, pow2
 
 
 @dataclass
@@ -37,7 +37,7 @@ class Voice:
 class Controls:
     master_volume: float = field(0.2, range=(0, 1), resolution=0.01)
     tempo: float = field(320, range=(50, 600), resolution=1, nl=True)
-    _voices: ngui.Group = ngui.group(orientation='vertical')
+    _voices: gui.Group = gui.group(orientation='vertical')
     voice_1: Voice = field(group=_voices)
     voice_2: Voice = field(group=_voices)
     voice_3: Voice = field(group=_voices)
@@ -83,7 +83,7 @@ def gen(ctl):
 
 
 if __name__ == '__main__':
-    ctl = ngui.make(Controls)
-    gui = ngui.GUI(Controls)
-    gui.bind(ctl)
-    gui.play(gen(ctl))
+    ctl = gui.make(Controls)
+    app = gui.App(Controls)
+    app.bind(ctl)
+    app.play(gen(ctl))

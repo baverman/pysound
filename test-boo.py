@@ -3,8 +3,8 @@ from dataclasses import dataclass
 
 import pysound as ps
 from pysound import modules as psm
-from pysound import ngui, tntparser
-from pysound.ngui import field, pow2
+from pysound import gui, tntparser
+from pysound.gui import field, pow2
 
 
 @dataclass
@@ -105,7 +105,7 @@ def gen(ctl):
 
 
 if __name__ == '__main__':
-    ctl = ngui.make(Controls)
-    gui = ngui.GUI(Controls)
-    gui.bind(ctl)
-    gui.play(gen(ctl))
+    ctl = gui.make(Controls)
+    app = gui.App(Controls)
+    app.bind(ctl)
+    app.play(gen(ctl))

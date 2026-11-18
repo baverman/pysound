@@ -8,7 +8,7 @@ import pysound as ps
 from pysound import (
     dcfilter, line, lowpass, moog, noise, phasor, phasor_apply, poly_saw, poly_square, shold,
     sinsum, square_partials)
-from pysound.ngui import VScale, field, pow2
+from pysound.gui import VScale, field, pow2
 
 square_t = sinsum(2048, square_partials(20))
 

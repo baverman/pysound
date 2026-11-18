@@ -4,8 +4,8 @@
 from dataclasses import dataclass
 
 from pure3 import mix
-from pysound import choicer, env_ahr, fps, mtof, ngui, osc, sin_t
-from pysound.ngui import field, pow2
+from pysound import choicer, env_ahr, fps, gui, mtof, osc, sin_t
+from pysound.gui import field, pow2
 from pysound.tonator import Scales
 
 
@@ -54,7 +54,7 @@ def gen(ctl):
 
 
 if __name__ == '__main__':
-    ctl = ngui.make(Controls)
-    gui = ngui.GUI(Controls)
-    gui.bind(ctl)
-    gui.play(gen(ctl))
+    ctl = gui.make(Controls)
+    app = gui.App(Controls)
+    app.bind(ctl)
+    app.play(gen(ctl))

@@ -5,9 +5,9 @@ from dataclasses import dataclass
 import numpy as np
 
 from pysound import (
-    FREQ, choicer, dcfilter, delay, ensure_buf, fps, lowpass, mtof, ngui,
+    FREQ, choicer, dcfilter, delay, ensure_buf, fps, gui, lowpass, mtof,
     seed_noise, env_ahr)
-from pysound.ngui import field, pow2, invpow3
+from pysound.gui import field, pow2, invpow3
 from pysound.tonator import Scales
 
 
@@ -47,7 +47,7 @@ def gen(ctl):
 
 
 if __name__ == '__main__':
-    ctl = ngui.make(Controls)
-    gui = ngui.GUI(Controls)
-    gui.bind(ctl)
-    gui.play(gen(ctl))
+    ctl = gui.make(Controls)
+    app = gui.App(Controls)
+    app.bind(ctl)
+    app.play(gen(ctl))

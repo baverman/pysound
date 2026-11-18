@@ -3,8 +3,8 @@
 # https://www.youtube.com/watch?v=I88Cxi86Zu8&list=PLqJgTfn3kSMW3AAAl2liJRKd-7DhZwLlq&index=1
 from dataclasses import dataclass
 
-from pysound import choicer, fps, mtof, ngui, osc, sin_t
-from pysound.ngui import field
+from pysound import choicer, fps, gui, mtof, osc, sin_t
+from pysound.gui import field
 from pysound.tonator import Scales
 
 
@@ -37,7 +37,7 @@ def gen(ctl):
 
 
 if __name__ == '__main__':
-    ctl = ngui.make(Controls)
-    gui = ngui.GUI(Controls)
-    gui.bind(ctl)
-    gui.play(gen(ctl))
+    ctl = gui.make(Controls)
+    app = gui.App(Controls)
+    app.bind(ctl)
+    app.play(gen(ctl))

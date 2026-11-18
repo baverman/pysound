@@ -2,8 +2,8 @@
 from dataclasses import dataclass
 
 import pysound as ps
-from pysound import choicer, fps, mono, ngui, osc, sin_t
-from pysound.ngui import field
+from pysound import choicer, fps, gui, mono, osc, sin_t
+from pysound.gui import field
 from pysound.tonator import Scales
 
 
@@ -34,7 +34,7 @@ def gen(ctl):
 
 
 if __name__ == '__main__':
-    ctl = ngui.make(Controls)
-    gui = ngui.GUI(Controls)
-    gui.bind(ctl)
-    gui.play(gen(ctl))
+    ctl = gui.make(Controls)
+    app = gui.App(Controls)
+    app.bind(ctl)
+    app.play(gen(ctl))
