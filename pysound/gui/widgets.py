@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import math
 import time
+import tkinter as tk
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 import customtkinter as ctk  # type: ignore[import-untyped]
-from PIL import Image, ImageDraw, ImageTk
+import numpy as np
 
+from . import sdfrender
 from .controls import (
     FieldInfo,
     Knob,
@@ -25,6 +27,14 @@ from .controls import (
 
 ChangeCallback = Callable[[float], None]
 _FRAME_INTERVAL = 1 / 60
+
+
+def _ppm_data(image: np.ndarray) -> bytes:
+    height, width, _ = image.shape
+    header = f'P6\n{width} {height}\n255\n'.encode('ascii')
+    return header + image.tobytes()
+
+
 
 
 @dataclass
@@ -143,14 +153,18 @@ class _Knob:
         )
         self.canvas.pack()
 
-        supersampling = 4
         self._canvas_size = (canvas_size, canvas_size + value_gap_size)
-        self._render_size = tuple(value * supersampling for value in self._canvas_size)
+        grid_y, grid_x = np.mgrid[: self._canvas_size[1], : self._canvas_size[0]]
+        self._image_x = grid_x.astype(np.float32) + 0.5
+        self._image_y = grid_y.astype(np.float32) + 0.5
         background = _image_color(self.canvas, str(self.canvas.cget('background')))
-        self._render_image = Image.new('RGB', self._render_size, background)
-        self._image_draw = ImageDraw.Draw(self._render_image)
-        display_image = Image.new('RGB', self._canvas_size, background)
-        self._knob_image = ImageTk.PhotoImage(display_image, master=self.canvas)
+        display_image = np.empty((self._canvas_size[1], self._canvas_size[0], 3), dtype=np.uint8)
+        display_image[:] = background
+        self._knob_image = tk.PhotoImage(
+            master=self.canvas,
+            data=_ppm_data(display_image),
+            format='PPM',
+        )
         self._image_item = self.canvas.create_image(
             0, 0, anchor='nw', image=self._knob_image
         )
@@ -237,20 +251,16 @@ class _Knob:
         )
         return _clamp_unit(normalized)
 
-    def _prepare_image(self) -> Image.Image:
+    def _prepare_image(self) -> np.ndarray:
         normalized = self._normalized_value()
-        render_width, render_height = self._render_size
-        def px(value: float) -> int:
-            return round(value * render_width)
+        width, height = self._canvas_size
+        center = width * 0.5
+        padding = max(1.0, width * 0.02)
+        arc_width = max(1.0, width * 0.08)
+        arc_radius = width * 0.5 - padding - arc_width * 0.5
+        start = math.radians(135)
+        sweep = math.radians(270)
 
-        padding = max(1, px(0.02))
-        arc_width = max(1, px(0.08))
-        bounds = (
-            padding,
-            padding,
-            render_width - 1 - padding,
-            render_width - 1 - padding,
-        )
         track = _appearance_color(ctk.ThemeManager.theme['CTkProgressBar']['fg_color'])
         accent = _appearance_color(ctk.ThemeManager.theme['CTkProgressBar']['progress_color'])
         indicator = _appearance_color(ctk.ThemeManager.theme['CTkLabel']['text_color'])
@@ -259,64 +269,66 @@ class _Knob:
         indicator_image = _image_color(self.canvas, indicator)
         background_image = _image_color(self.canvas, str(self.canvas.cget('background')))
 
-        draw = self._image_draw
-        draw.rectangle(
-            (0, 0, render_width - 1, render_height - 1),
-            fill=background_image,
+        image = np.empty((height, width, 3), dtype=np.float32)
+        image[:] = background_image
+
+        track_distance = sdfrender.arc(
+            self._image_x,
+            self._image_y,
+            center,
+            center,
+            arc_radius,
+            arc_width * 0.5,
+            start,
+            sweep,
         )
-        draw.arc(
-            bounds,
-            start=135,
-            end=405,
-            fill=track_image,
-            width=arc_width,
-        )
+        sdfrender.composite(image, track_image, sdfrender.coverage(track_distance))
+
         if normalized > 0:
-            draw.arc(
-                bounds,
-                start=135,
-                end=135 + 270 * normalized,
-                fill=accent_image,
-                width=arc_width,
+            accent_distance = sdfrender.arc(
+                self._image_x,
+                self._image_y,
+                center,
+                center,
+                arc_radius,
+                arc_width * 0.5,
+                start,
+                sweep * normalized,
             )
+            sdfrender.composite(image, accent_image, sdfrender.coverage(accent_distance))
 
-        center = px(0.5)
         angle = math.radians(225 - 270 * normalized)
-        end_x = px(0.5 + math.cos(angle) * 0.30)
-        end_y = px(0.5 - math.sin(angle) * 0.30)
-        line_width = max(1, px(0.05))
-        line_points = [(center, center), (end_x, end_y)]
-        draw.line(line_points, fill=indicator_image, width=line_width)
-
-        cap_radius = line_width / 2
-        draw.ellipse(
-            (
-                round(end_x - cap_radius),
-                round(end_y - cap_radius),
-                round(end_x + cap_radius),
-                round(end_y + cap_radius),
-            ),
-            fill=indicator_image,
+        end_x = center + math.cos(angle) * width * 0.30
+        end_y = center - math.sin(angle) * width * 0.30
+        line_width = max(1.0, width * 0.05)
+        line_distance = sdfrender.segment(
+            self._image_x,
+            self._image_y,
+            center,
+            center,
+            end_x,
+            end_y,
+            line_width * 0.5,
+        )
+        center_distance = sdfrender.circle(
+            self._image_x,
+            self._image_y,
+            center,
+            center,
+            width * 0.05,
+        )
+        indicator_distance = np.minimum(line_distance, center_distance)
+        sdfrender.composite(
+            image,
+            indicator_image,
+            sdfrender.coverage(indicator_distance),
         )
 
-        center_radius = px(0.05)
-        draw.ellipse(
-            (
-                center - center_radius,
-                center - center_radius,
-                center + center_radius,
-                center + center_radius,
-            ),
-            fill=indicator_image,
-        )
-
-        return self._render_image.resize(
-            self._canvas_size,
-            Image.Resampling.LANCZOS,
-        )
+        return np.clip(image, 0, 255).astype(np.uint8)
 
     def _draw(self) -> None:
-        self._knob_image.paste(self._prepare_image())
+        image = self._prepare_image()
+        self._knob_image.configure(data=_ppm_data(image), format='PPM')
         indicator = _appearance_color(ctk.ThemeManager.theme['CTkLabel']['text_color'])
         self.canvas.itemconfigure(
             self._text_item,

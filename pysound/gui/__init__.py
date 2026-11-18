@@ -1,3 +1,4 @@
+from . import sdfrender
 from .app import App, build, make
 from .controls import (
     Exp,
