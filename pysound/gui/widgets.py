@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import math
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 import customtkinter as ctk  # type: ignore[import-untyped]
+from PIL import Image, ImageDraw, ImageTk
 
 from .controls import (
     FieldInfo,
@@ -22,6 +24,7 @@ from .controls import (
 )
 
 ChangeCallback = Callable[[float], None]
+_FRAME_INTERVAL = 1 / 60
 
 
 @dataclass
@@ -112,8 +115,8 @@ class _Knob:
         parent: Any,
         info: FieldInfo,
         command: ChangeCallback,
-        size: int = 64,
-        value_gap: int = 6,
+        size: int = 56,
+        value_gap: int = 8,
     ) -> None:
         self.minimum, self.maximum = _range_for(info)
         self.map = info.config.map
@@ -140,15 +143,58 @@ class _Knob:
         )
         self.canvas.pack()
 
+        self._supersampling = 4
+        self._canvas_size = (canvas_size, canvas_size + value_gap_size)
+        background = _image_color(self.canvas, str(self.canvas.cget('background')))
+        self._render_image = Image.new(
+            'RGB',
+            tuple(value * self._supersampling for value in self._canvas_size),
+            background,
+        )
+        self._image_draw = ImageDraw.Draw(self._render_image)
+        display_image = Image.new('RGB', self._canvas_size, background)
+        self._knob_image = ImageTk.PhotoImage(display_image, master=self.canvas)
+        self._image_item = self.canvas.create_image(
+            0, 0, anchor='nw', image=self._knob_image
+        )
+        indicator = _appearance_color(ctk.ThemeManager.theme['CTkLabel']['text_color'])
+        font = ctk.ThemeManager.theme['CTkFont']
+        self._text_item = self.canvas.create_text(
+            canvas_size / 2,
+            size * self.scaling - 10 * self.scaling + value_gap * self.scaling,
+            text=self._format_value(),
+            fill=indicator,
+            font=(font['family'], -round(font['size'] * self.scaling)),
+        )
+
         self.canvas.bind('<ButtonPress-1>', self._press)
         self.canvas.bind('<B1-Motion>', self._drag)
         self.canvas.bind('<MouseWheel>', self._wheel)
         self.canvas.bind('<Button-4>', self._wheel)
         self.canvas.bind('<Button-5>', self._wheel)
+        self._redraw_job: str | None = None
+        self._last_draw = 0.0
         self._draw()
+        self._last_draw = time.monotonic()
 
     def set(self, value: float) -> None:
-        self.value = self._clamp_value(float(value))
+        value = self._clamp_value(float(value))
+        if value == self.value:
+            return
+        self.value = value
+        self._request_draw()
+
+    def _request_draw(self) -> None:
+        if self._redraw_job is not None:
+            return
+        elapsed = time.monotonic() - self._last_draw
+        remaining = max(0.0, _FRAME_INTERVAL - elapsed)
+        delay = math.ceil(remaining * 1000)
+        self._redraw_job = self.canvas.after(delay, self._flush_draw)
+
+    def _flush_draw(self) -> None:
+        self._redraw_job = None
+        self._last_draw = time.monotonic()
         self._draw()
 
     def _set_from_user(self, control: float) -> None:
@@ -195,61 +241,96 @@ class _Knob:
         normalized = _clamp_unit(normalized)
         scaling = self.scaling
         size = self.size * scaling
-        arc_width = round(size / 12)
+        supersampling = self._supersampling
+        arc_width = max(1, round(size / 12))
         padding = math.ceil(arc_width / 2) + 1
-        bounds = (padding, padding, size - padding, size - padding)
+        outer_padding = padding - arc_width / 2
+        bounds = (
+            outer_padding,
+            outer_padding,
+            size - outer_padding,
+            size - outer_padding,
+        )
         track = _appearance_color(ctk.ThemeManager.theme['CTkProgressBar']['fg_color'])
         accent = _appearance_color(ctk.ThemeManager.theme['CTkProgressBar']['progress_color'])
         indicator = _appearance_color(ctk.ThemeManager.theme['CTkLabel']['text_color'])
+        track_image = _image_color(self.canvas, track)
+        accent_image = _image_color(self.canvas, accent)
+        indicator_image = _image_color(self.canvas, indicator)
+        background_image = _image_color(self.canvas, str(self.canvas.cget('background')))
 
-        self.canvas.delete('all')
-        self.canvas.create_arc(
-            *bounds,
-            start=225,
-            extent=-270,
-            style='arc',
-            outline=track,
-            width=arc_width,
+        draw = self._image_draw
+        draw.rectangle(
+            (0, 0, self._render_image.width, self._render_image.height),
+            fill=background_image,
         )
-        self.canvas.create_arc(
-            *bounds,
-            start=225,
-            extent=-270 * normalized,
-            style='arc',
-            outline=accent,
-            width=arc_width,
+
+        def scaled_box(box: tuple[float, float, float, float]) -> tuple[int, int, int, int]:
+            return tuple(round(value * supersampling) for value in box)
+
+        scaled_bounds = scaled_box(bounds)
+        draw.arc(
+            scaled_bounds,
+            start=135,
+            end=405,
+            fill=track_image,
+            width=arc_width * supersampling,
         )
+        if normalized > 0:
+            draw.arc(
+                scaled_bounds,
+                start=135,
+                end=135 + 270 * normalized,
+                fill=accent_image,
+                width=arc_width * supersampling,
+            )
 
         center = size / 2
-        radius = size / 2 - 18 * scaling
+        radius = size / 2 - 12 * scaling
         angle = math.radians(225 - 270 * normalized)
         end_x = center + math.cos(angle) * radius
         end_y = center - math.sin(angle) * radius
+        line_width = max(1, round(size / 25))
+        scaled_line_width = line_width * supersampling
+        line_points = [
+            (round(center * supersampling), round(center * supersampling)),
+            (round(end_x * supersampling), round(end_y * supersampling)),
+        ]
+        draw.line(line_points, fill=indicator_image, width=scaled_line_width)
+        cap_radius = scaled_line_width / 2
+        end_x_scaled, end_y_scaled = line_points[1]
+        draw.ellipse(
+            (
+                round(end_x_scaled - cap_radius),
+                round(end_y_scaled - cap_radius),
+                round(end_x_scaled + cap_radius),
+                round(end_y_scaled + cap_radius),
+            ),
+            fill=indicator_image,
+        )
+
         center_size = size / 20
-        self.canvas.create_oval(
-            center - center_size,
-            center - center_size,
-            center + center_size,
-            center + center_size,
-            fill=indicator,
-            outline='',
+        draw.ellipse(
+            scaled_box(
+                (
+                    center - center_size,
+                    center - center_size,
+                    center + center_size,
+                    center + center_size,
+                )
+            ),
+            fill=indicator_image,
         )
-        self.canvas.create_line(
-            center,
-            center,
-            end_x,
-            end_y,
-            fill=indicator,
-            width=round(size / 30),
-            capstyle='round',
+
+        image = self._render_image.resize(
+            self._canvas_size,
+            Image.Resampling.LANCZOS,
         )
-        font = ctk.ThemeManager.theme['CTkFont']
-        self.canvas.create_text(
-            center,
-            size - 10 * scaling + self.value_gap * scaling,
+        self._knob_image.paste(image)
+        self.canvas.itemconfigure(
+            self._text_item,
             text=self._format_value(),
             fill=indicator,
-            font=(font['family'], -round(font['size'] * scaling)),
         )
 
     def _format_value(self) -> str:
@@ -374,6 +455,11 @@ def _appearance_color(color: Any) -> str:
         index = 0 if ctk.get_appearance_mode() == 'Light' else 1
         return str(color[index])
     return str(color)
+
+
+def _image_color(widget: Any, color: str) -> tuple[int, int, int]:
+    red, green, blue = widget.winfo_rgb(color)
+    return red // 257, green // 257, blue // 257
 
 
 def _widget_background(widget: Any) -> str:

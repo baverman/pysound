@@ -7,4 +7,4 @@ realtime audio.
 
 Amazing PD tutorials: https://www.youtube.com/watch?v=I88Cxi86Zu8&list=PLqJgTfn3kSMW3AAAl2liJRKd-7DhZwLlq&index=1
 
-My goal is to use only stdlib, NumPy and a couple of primitives written in C.
+My goal is to use minimal dependencies, NumPy and a couple of primitives written in C.
