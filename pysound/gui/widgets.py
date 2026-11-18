@@ -143,14 +143,11 @@ class _Knob:
         )
         self.canvas.pack()
 
-        self._supersampling = 4
+        supersampling = 4
         self._canvas_size = (canvas_size, canvas_size + value_gap_size)
+        self._render_size = tuple(value * supersampling for value in self._canvas_size)
         background = _image_color(self.canvas, str(self.canvas.cget('background')))
-        self._render_image = Image.new(
-            'RGB',
-            tuple(value * self._supersampling for value in self._canvas_size),
-            background,
-        )
+        self._render_image = Image.new('RGB', self._render_size, background)
         self._image_draw = ImageDraw.Draw(self._render_image)
         display_image = Image.new('RGB', self._canvas_size, background)
         self._knob_image = ImageTk.PhotoImage(display_image, master=self.canvas)
@@ -161,7 +158,7 @@ class _Knob:
         font = ctk.ThemeManager.theme['CTkFont']
         self._text_item = self.canvas.create_text(
             canvas_size / 2,
-            size * self.scaling - 10 * self.scaling + value_gap * self.scaling,
+            canvas_size + value_gap_size - round(10 * self.scaling),
             text=self._format_value(),
             fill=indicator,
             font=(font['family'], -round(font['size'] * self.scaling)),
@@ -233,23 +230,26 @@ class _Knob:
         steps = round((value - self.control_minimum) / self.resolution)
         return self.control_minimum + steps * self.resolution
 
-    def _draw(self) -> None:
+    def _normalized_value(self) -> float:
         control = _control_from_value(self.value, self.minimum, self.maximum, self.map)
         normalized = (control - self.control_minimum) / (
             self.control_maximum - self.control_minimum
         )
-        normalized = _clamp_unit(normalized)
-        scaling = self.scaling
-        size = self.size * scaling
-        supersampling = self._supersampling
-        arc_width = max(1, round(size / 12))
-        padding = math.ceil(arc_width / 2) + 1
-        outer_padding = padding - arc_width / 2
+        return _clamp_unit(normalized)
+
+    def _prepare_image(self) -> Image.Image:
+        normalized = self._normalized_value()
+        render_width, render_height = self._render_size
+        def px(value: float) -> int:
+            return round(value * render_width)
+
+        padding = max(1, px(0.02))
+        arc_width = max(1, px(0.08))
         bounds = (
-            outer_padding,
-            outer_padding,
-            size - outer_padding,
-            size - outer_padding,
+            padding,
+            padding,
+            render_width - 1 - padding,
+            render_width - 1 - padding,
         )
         track = _appearance_color(ctk.ThemeManager.theme['CTkProgressBar']['fg_color'])
         accent = _appearance_color(ctk.ThemeManager.theme['CTkProgressBar']['progress_color'])
@@ -261,72 +261,63 @@ class _Knob:
 
         draw = self._image_draw
         draw.rectangle(
-            (0, 0, self._render_image.width, self._render_image.height),
+            (0, 0, render_width - 1, render_height - 1),
             fill=background_image,
         )
-
-        def scaled_box(box: tuple[float, float, float, float]) -> tuple[int, int, int, int]:
-            return tuple(round(value * supersampling) for value in box)
-
-        scaled_bounds = scaled_box(bounds)
         draw.arc(
-            scaled_bounds,
+            bounds,
             start=135,
             end=405,
             fill=track_image,
-            width=arc_width * supersampling,
+            width=arc_width,
         )
         if normalized > 0:
             draw.arc(
-                scaled_bounds,
+                bounds,
                 start=135,
                 end=135 + 270 * normalized,
                 fill=accent_image,
-                width=arc_width * supersampling,
+                width=arc_width,
             )
 
-        center = size / 2
-        radius = size / 2 - 12 * scaling
+        center = px(0.5)
         angle = math.radians(225 - 270 * normalized)
-        end_x = center + math.cos(angle) * radius
-        end_y = center - math.sin(angle) * radius
-        line_width = max(1, round(size / 25))
-        scaled_line_width = line_width * supersampling
-        line_points = [
-            (round(center * supersampling), round(center * supersampling)),
-            (round(end_x * supersampling), round(end_y * supersampling)),
-        ]
-        draw.line(line_points, fill=indicator_image, width=scaled_line_width)
-        cap_radius = scaled_line_width / 2
-        end_x_scaled, end_y_scaled = line_points[1]
+        end_x = px(0.5 + math.cos(angle) * 0.30)
+        end_y = px(0.5 - math.sin(angle) * 0.30)
+        line_width = max(1, px(0.05))
+        line_points = [(center, center), (end_x, end_y)]
+        draw.line(line_points, fill=indicator_image, width=line_width)
+
+        cap_radius = line_width / 2
         draw.ellipse(
             (
-                round(end_x_scaled - cap_radius),
-                round(end_y_scaled - cap_radius),
-                round(end_x_scaled + cap_radius),
-                round(end_y_scaled + cap_radius),
+                round(end_x - cap_radius),
+                round(end_y - cap_radius),
+                round(end_x + cap_radius),
+                round(end_y + cap_radius),
             ),
             fill=indicator_image,
         )
 
-        center_size = size / 20
+        center_radius = px(0.05)
         draw.ellipse(
-            scaled_box(
-                (
-                    center - center_size,
-                    center - center_size,
-                    center + center_size,
-                    center + center_size,
-                )
+            (
+                center - center_radius,
+                center - center_radius,
+                center + center_radius,
+                center + center_radius,
             ),
             fill=indicator_image,
         )
 
-        image = self._render_image.resize(
+        return self._render_image.resize(
             self._canvas_size,
             Image.Resampling.LANCZOS,
         )
-        self._knob_image.paste(image)
+
+    def _draw(self) -> None:
+        self._knob_image.paste(self._prepare_image())
+        indicator = _appearance_color(ctk.ThemeManager.theme['CTkLabel']['text_color'])
         self.canvas.itemconfigure(
             self._text_item,
             text=self._format_value(),
