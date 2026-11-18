@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 import threading
 from collections.abc import Callable, Mapping
 from dataclasses import MISSING, Field, dataclass, fields, is_dataclass
@@ -9,6 +10,9 @@ from types import MappingProxyType
 from typing import Any, Protocol, cast, get_type_hints, overload
 
 import customtkinter as ctk  # type: ignore[import-untyped]
+
+if (zoom := os.environ.get('CTK_ZOOM')) is not None:
+    ctk.set_widget_scaling(float(zoom))
 
 ctk.set_appearance_mode(ctk.get_appearance_mode())
 
@@ -267,7 +271,8 @@ class _Knob:
         parent: Any,
         info: FieldInfo,
         command: ChangeCallback,
-        size: int = 88,
+        size: int = 64,
+        value_gap: int = 6,
     ) -> None:
         self.minimum, self.maximum = _range_for(info)
         self.map = info.config.map
@@ -275,16 +280,20 @@ class _Knob:
         self.resolution = _effective_resolution(info.config)
         self.command = command
         self.size = size
+        self.value_gap = value_gap
         self.value = self.minimum
         self._drag_y = 0
         self._drag_control = self.control_minimum
 
         self.frame = ctk.CTkFrame(parent, fg_color='transparent')
         ctk.CTkLabel(self.frame, text=info.label).pack(fill='x')
+        self.scaling = ctk.ScalingTracker.get_widget_scaling(self.frame)
+        canvas_size = round(size * self.scaling)
+        value_gap_size = round(value_gap * self.scaling)
         self.canvas = ctk.CTkCanvas(
             self.frame,
-            width=size,
-            height=size,
+            width=canvas_size,
+            height=canvas_size + value_gap_size,
             highlightthickness=0,
             background=_widget_background(parent),
         )
@@ -314,7 +323,7 @@ class _Knob:
     def _drag(self, event: Any) -> None:
         distance = self._drag_y - event.y_root
         span = self.control_maximum - self.control_minimum
-        self._set_from_user(self._drag_control + distance * span / 150)
+        self._set_from_user(self._drag_control + distance * span / (150 * self.scaling))
 
     def _wheel(self, event: Any) -> None:
         direction = 1 if getattr(event, 'delta', 0) > 0 or getattr(event, 'num', 0) == 4 else -1
@@ -343,8 +352,11 @@ class _Knob:
             self.control_maximum - self.control_minimum
         )
         normalized = _clamp_unit(normalized)
-        padding = 9
-        bounds = (padding, padding, self.size - padding, self.size - padding)
+        scaling = self.scaling
+        size = self.size * scaling
+        arc_width = round(size / 12)
+        padding = math.ceil(arc_width / 2) + 1
+        bounds = (padding, padding, size - padding, size - padding)
         track = _appearance_color(ctk.ThemeManager.theme['CTkProgressBar']['fg_color'])
         accent = _appearance_color(ctk.ThemeManager.theme['CTkProgressBar']['progress_color'])
         indicator = _appearance_color(ctk.ThemeManager.theme['CTkLabel']['text_color'])
@@ -356,7 +368,7 @@ class _Knob:
             extent=-270,
             style='arc',
             outline=track,
-            width=7,
+            width=arc_width,
         )
         self.canvas.create_arc(
             *bounds,
@@ -364,19 +376,20 @@ class _Knob:
             extent=-270 * normalized,
             style='arc',
             outline=accent,
-            width=7,
+            width=arc_width,
         )
 
-        center = self.size / 2
-        radius = self.size / 2 - 18
+        center = size / 2
+        radius = size / 2 - 18 * scaling
         angle = math.radians(225 - 270 * normalized)
         end_x = center + math.cos(angle) * radius
         end_y = center - math.sin(angle) * radius
+        csize = size/20
         self.canvas.create_oval(
-            center - 4,
-            center - 4,
-            center + 4,
-            center + 4,
+            center - csize,
+            center - csize,
+            center + csize,
+            center + csize,
             fill=indicator,
             outline='',
         )
@@ -386,22 +399,23 @@ class _Knob:
             end_x,
             end_y,
             fill=indicator,
-            width=3,
+            width=round(size/30),
             capstyle='round',
         )
+        font = ctk.ThemeManager.theme['CTkFont']
         self.canvas.create_text(
             center,
-            self.size - 10,
+            size - 10 * scaling + self.value_gap * scaling,
             text=self._format_value(),
             fill=indicator,
-            font='TkDefaultFont',
+            font=(font['family'], -round(font['size'] * scaling)),
         )
 
     def _format_value(self) -> str:
-        if self.map is not None or self.resolution is None or self.resolution >= 1:
-            return f'{self.value:g}'
-        precision = max(0, math.ceil(-math.log10(self.resolution)))
-        return f'{self.value:.{precision}f}'
+        if abs(self.value) > 9999:
+            return str(round(self.value))
+        else:
+            return '{:.4g}'.format(self.value)
 
 
 class Panel:
