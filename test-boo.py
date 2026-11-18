@@ -64,7 +64,7 @@ def synth(ctl, params):
     p1 = ps.phasor()
     p2 = ps.phasor()
     p3 = ps.phasor()
-    flt = ps.pole2()
+    flt = ps.filters.pole2()
     osc = ps.poly_saw()
     # osc = ps.poly_square()
 

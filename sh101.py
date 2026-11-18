@@ -6,7 +6,7 @@ import numpy as np
 
 import pysound as ps
 from pysound import (
-    dcfilter, line, lowpass, moog, noise, phasor, phasor_apply, poly_saw, poly_square, shold,
+    dcfilter, filters, line, noise, phasor, phasor_apply, poly_saw, poly_square, shold,
     sinsum, square_partials)
 from pysound.gui import VScale, field, pow2
 
@@ -113,7 +113,7 @@ def vco(ctl):
 
 
 def vcf(ctl):
-    lp = moog()
+    lp = filters.moog()
 
     def process(sig, env_value, lfo_value):
         alpha = (ctl.vcf.cutoff
@@ -127,7 +127,7 @@ def vcf(ctl):
 def lfo(ctl):
     p = phasor()
     sh = shold()
-    lp = lowpass()
+    lp = filters.lowpass()
 
     def sgen():
         f = ctl.lfo.form

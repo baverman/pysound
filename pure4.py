@@ -5,7 +5,7 @@ import itertools
 from dataclasses import dataclass
 
 from pure3 import mix
-from pysound import env_ahr, fps, gui, lowpass, mtof, phasor
+from pysound import env_ahr, filters, fps, gui, mtof, phasor
 from pysound.gui import field, pow2
 
 
@@ -49,7 +49,7 @@ def synth(ctl, f, note_vol):
     o = phasor()
     env = env_ahr()
     filter_env = env_ahr()
-    lp = lowpass()
+    lp = filters.lowpass()
     while env.active:
         sig = o(f)
         fenv = filter_env(ctlf.attack, ctlf.hold, ctlf.release)

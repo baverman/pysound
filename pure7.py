@@ -4,7 +4,7 @@
 from dataclasses import dataclass
 
 from pure3 import mix
-from pysound import choicer, dcfilter, env_ahr, fps, gui, lowpass, mtof, osc, sin_t, square
+from pysound import choicer, dcfilter, env_ahr, filters, fps, gui, mtof, osc, sin_t, square
 from pysound.gui import field, pow2
 from pysound.tonator import Scales
 
@@ -23,7 +23,7 @@ class Controls:
 def square_mod():
     o = square()
     wm = osc(sin_t)
-    flt = lowpass()
+    flt = filters.lowpass()
 
     def sig(f, mfreq, mdepth):
         duty = 0.5 + mdepth * wm(mfreq) / 2.0

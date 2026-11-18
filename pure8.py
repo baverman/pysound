@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from pysound import (
-    FREQ, choicer, dcfilter, delay, ensure_buf, fps, gui, lowpass, mtof,
+    FREQ, choicer, dcfilter, delay, ensure_buf, filters, fps, gui, mtof,
     seed_noise, env_ahr)
 from pysound.gui import field, pow2, invpow3
 from pysound.tonator import Scales
@@ -24,7 +24,7 @@ class Controls:
 
 def synth(ctl, f):
     n = seed_noise(1)
-    flt = lowpass()
+    flt = filters.lowpass()
     eg = env_ahr()
     e = env_ahr()
     d = delay(0.5)

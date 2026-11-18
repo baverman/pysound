@@ -187,16 +187,16 @@ def filter_im_res():
         plt.legend(loc='upper left')
 
     # plt.subplot(211)
-    # response_res(makeflt(ps.bqlp), 0.4)
+    # response_res(makeflt(ps.filters.bqlp), 0.4)
     # set_axes()
     #
     # plt.subplot(212)
-    # response_res(makeflt(ps.lowpass), 0.4)
+    # response_res(makeflt(ps.filters.lowpass), 0.4)
     # set_axes()
 
-    # response_res(makeflt(ps.moog), 0.4, max=1)
+    # response_res(makeflt(ps.filters.moog), 0.4, max=1)
     # response_f(makeflt(pole2), 0.4)
-    response_f(makeflt(ps.pole2), 0.9)
+    response_f(makeflt(ps.filters.pole2), 0.9)
     set_axes()
 
 # env = ps.env_ahdsr(0.0)

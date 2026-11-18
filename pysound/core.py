@@ -404,14 +404,15 @@ def make_filter(fn, scount):
     return filter_constructor
 
 
-bqlp = make_filter(cfilters.lib.bqlp, 4)
-flt12 = make_filter(cfilters.lib.flt12, 2)
-pdvcf = make_filter(cfilters.lib.pdvcf, 2)
-moog = make_filter(cfilters.lib.moog, 7)
 lowpass_orig = make_filter(cfilters.lib.lowpass, 2)
-pole2 = make_filter(cfilters.lib.pole2, 2)
 
-lowpass = lowpass_orig
+class filters:
+    bqlp = make_filter(cfilters.lib.bqlp, 4)
+    flt12 = make_filter(cfilters.lib.flt12, 2)
+    pdvcf = make_filter(cfilters.lib.pdvcf, 2)
+    moog = make_filter(cfilters.lib.moog, 7)
+    pole2 = make_filter(cfilters.lib.pole2, 2)
+    lowpass = lowpass_orig
 
 
 def dcfilter(cutoff=20):

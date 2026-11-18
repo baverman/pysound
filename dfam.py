@@ -53,7 +53,7 @@ def vco(ctl, params):
 
 
 def vcf(ctl, params):
-    lp = ps.moog()
+    lp = ps.filters.moog()
     def process(sig):
         env = params['env_gen'].vcf(5.0, ctl['vcf-decay']**2*10000.0, 0.0, 5)**2.0
         cutoff = (ctl['cutoff'] + ctl['vcf-env']*env)**2.0
