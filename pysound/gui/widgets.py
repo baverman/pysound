@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import time
 import tkinter as tk
+import contextlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -35,6 +36,11 @@ def _ppm_data(image: np.ndarray) -> bytes:
     return header + image.tobytes()
 
 
+@contextlib.contextmanager
+def timeit(name):
+    ts = time.perf_counter()
+    yield
+    print('{}: {:.3g}ms'.format(name, (time.perf_counter() - ts) * 1000))
 
 
 @dataclass
