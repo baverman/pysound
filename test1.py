@@ -21,12 +21,12 @@ class Controls:
 def gen(ctl):
     me = tntparser.make_events
     notes = tntparser.mix_events([
-        me("c=0 o=2 amul=2 k=C !7b 2 !6 2 !5 2 !4  3b !2"),
+        # me("c=0 o=2 amul=2 k=C !7b 2 !6 2 !5 2 !4  3b !2"),
         # me("c=0 o=3 amul=2 k=C 1 3 5 7 8 7 5 3"),
         # me("c=0 o=3 k=C amul=2  G F# E <E G <D- D | D- E <C G- >A <B | >B- >C <E- G F# <D | - E D <C '>B '>G '>A ''>>B")
 
         # me("c=1 o=3 amul=2  4   -  4 -  4 -  7b -   6")
-        # me("c=0 o=3 amul=2 k=C 3 _ _ 3 _ _ 10 _ _ 3 _ _ 4 _ _ 5 | 1 _ _ 1 _ _ 8 _ _ 1 _ _ 6 _ _ 5"),
+        me("c=0 o=3 amul=2 k=C 3 _ _ 3 _ _ 10 _ _ 3 _ _ 4 _ _ 5 | 1 _ _ 1 _ _ 8 _ _ 1 _ _ 6 _ _ 5"),
         # me("c=1 o=3 amul=2 k=C 1       1       1       1       | 1       1       1       1"),
     ])
     taker = tntparser.take_until(notes.loop())
@@ -41,7 +41,7 @@ def gen(ctl):
     kp = kbd_player(channel=0)
     while True:
         kp(ctl, player)
-        # seq(player, taker, ctl.tempo)
+        seq(player, taker, ctl.tempo)
         yield player()
 
 
